@@ -17,8 +17,12 @@ export const QUEUES = {
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
 
-/** BullMQ needs a Redis connection with maxRetriesPerRequest disabled. */
+/** BullMQ needs a Redis connection with maxRetriesPerRequest disabled.
+ * Throws if REDIS_URL is unset — callers in inline-jobs mode must not reach here. */
 export function createConnection(): Redis {
+  if (!env.REDIS_URL) {
+    throw new Error("REDIS_URL is not set — queue/worker require Redis (inline mode should not call this)");
+  }
   return new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
 }
 

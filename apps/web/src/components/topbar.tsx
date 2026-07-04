@@ -1,16 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { clearToken, isLoggedIn } from "@/lib/api";
 
 /** Topbar: tenant/client/project context selectors, global search, theme. */
 export function Topbar() {
   const [dark, setDark] = useState(false);
+  const [authed, setAuthed] = useState(false);
 
   useEffect(() => {
     const prefers = window.matchMedia("(prefers-color-scheme: dark)").matches;
     setDark(prefers);
     document.documentElement.classList.toggle("dark", prefers);
+    setAuthed(isLoggedIn());
   }, []);
+
+  function logout() {
+    clearToken();
+    window.location.href = "/login";
+  }
 
   function toggleTheme() {
     const next = !dark;
@@ -42,9 +50,15 @@ export function Topbar() {
         <button className="grid h-8 w-8 place-items-center rounded-md border border-border text-sm hover:bg-border/50">
           🔔
         </button>
-        <div className="grid h-8 w-8 place-items-center rounded-full bg-brand text-xs font-semibold text-white">
-          RN
-        </div>
+        {authed ? (
+          <button onClick={logout} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-border/50">
+            Sair
+          </button>
+        ) : (
+          <a href="/login" className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90">
+            Entrar
+          </a>
+        )}
       </div>
     </header>
   );

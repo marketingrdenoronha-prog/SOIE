@@ -16,7 +16,9 @@ const EnvSchema = z.object({
   API_URL: z.string().url().default("http://localhost:3333"),
 
   DATABASE_URL: z.string().min(1),
-  REDIS_URL: z.string().min(1).default("redis://localhost:6379"),
+  // Optional: when unset (e.g. serverless on Vercel), jobs run inline instead
+  // of via BullMQ/Redis. Set it to enable the queue + worker.
+  REDIS_URL: z.string().optional(),
 
   JWT_ACCESS_SECRET: z.string().min(8).default("dev-access-secret"),
   JWT_REFRESH_SECRET: z.string().min(8).default("dev-refresh-secret"),

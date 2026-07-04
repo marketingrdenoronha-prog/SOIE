@@ -97,17 +97,17 @@ export class DeliverablesService {
     if (!d) throw new NotFoundException("Deliverable not found");
 
     const token = randomBytes(24).toString("base64url");
-    await this.prisma.forTenant(organizationId, (tx) =>
-      tx.$transaction([
-        tx.reviewLink.create({
-          data: { organizationId, deliverableId, token, createdBy: userId },
-        }),
-        tx.deliverable.update({
-          where: { id: deliverableId },
-          data: { status: "client_review" },
-        }),
-      ]),
-    );
+    // Already inside withTenant's transaction — run sequentially. (Calling
+    // tx.$transaction here would be a nested transaction, which Prisma rejects.)
+    await this.prisma.forTenant(organizationId, async (tx) => {
+      await tx.reviewLink.create({
+        data: { organizationId, deliverableId, token, createdBy: userId },
+      });
+      await tx.deliverable.update({
+        where: { id: deliverableId },
+        data: { status: "client_review" },
+      });
+    });
     return { token, url: `/review/${token}` };
   }
 }
