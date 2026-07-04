@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { SpecView } from "@/components/spec-view";
+import { ProjectPicker } from "@/components/project-picker";
 import { api, isLoggedIn } from "@/lib/api";
 
 interface Deliverable {
@@ -32,6 +33,8 @@ export function DeliverablesClient() {
   const [loading, setLoading] = useState(true);
 
   // generate form
+  const [mode, setMode] = useState<"project" | "new">("project");
+  const [projectId, setProjectId] = useState("");
   const [clientName, setClientName] = useState("");
   const [channel, setChannel] = useState("instagram");
   const [type, setType] = useState("video_script");
@@ -62,9 +65,13 @@ export function DeliverablesClient() {
     setBusy(true);
     setError(null);
     try {
+      const payload =
+        mode === "project"
+          ? { projectId, channel, type, brief: brief || undefined }
+          : { clientName, channel, type, brief: brief || undefined };
       await api("/deliverables/quick", {
         method: "POST",
-        body: JSON.stringify({ clientName, channel, type, brief: brief || undefined }),
+        body: JSON.stringify(payload),
       });
       setClientName("");
       setBrief("");
@@ -75,6 +82,8 @@ export function DeliverablesClient() {
       setBusy(false);
     }
   }
+
+  const canGenerate = mode === "project" ? Boolean(projectId) : Boolean(clientName);
 
   if (!authed) {
     return (
@@ -99,8 +108,45 @@ export function DeliverablesClient() {
 
       <form onSubmit={generate} className="rounded-xl border border-border bg-elevated p-4">
         <p className="mb-3 text-sm font-semibold">Gerar entrega</p>
+
+        <div className="mb-3 inline-flex rounded-lg border border-border p-0.5 text-xs">
+          <button
+            type="button"
+            onClick={() => setMode("project")}
+            className={`rounded-md px-3 py-1.5 font-medium ${mode === "project" ? "bg-brand text-white" : "text-muted hover:text-foreground"}`}
+          >
+            Projeto existente
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("new")}
+            className={`rounded-md px-3 py-1.5 font-medium ${mode === "new" ? "bg-brand text-white" : "text-muted hover:text-foreground"}`}
+          >
+            Novo cliente
+          </button>
+        </div>
+
+        {mode === "project" ? (
+          <p className="mb-3 text-xs text-muted">
+            A entrega usa a persona, o DNA da marca e a linha editorial já gerados para o projeto.
+          </p>
+        ) : (
+          <p className="mb-3 text-xs text-muted">
+            Cria um cliente → marca → projeto do zero (sem contexto estratégico prévio).
+          </p>
+        )}
+
         <div className="grid gap-3 sm:grid-cols-2">
-          <Input label="Cliente" value={clientName} onChange={setClientName} required />
+          {mode === "project" ? (
+            <label className="block">
+              <span className="text-xs font-medium text-muted">Projeto</span>
+              <div className="mt-1">
+                <ProjectPicker value={projectId} onChange={setProjectId} />
+              </div>
+            </label>
+          ) : (
+            <Input label="Cliente" value={clientName} onChange={setClientName} required />
+          )}
           <Select label="Canal" value={channel} onChange={setChannel} options={CHANNELS} />
           <Select label="Formato" value={type} onChange={setType} options={TYPES} />
           <Input label="Briefing (opcional)" value={brief} onChange={setBrief} />
@@ -108,7 +154,7 @@ export function DeliverablesClient() {
         {error && <p className="mt-3 text-sm text-rose-500">{error}</p>}
         <button
           type="submit"
-          disabled={busy || !clientName}
+          disabled={busy || !canGenerate}
           className="mt-4 rounded-lg bg-brand px-5 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
         >
           {busy ? "Gerando…" : "Gerar e criar link do cliente"}

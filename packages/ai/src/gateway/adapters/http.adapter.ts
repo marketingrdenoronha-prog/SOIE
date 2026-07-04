@@ -66,6 +66,10 @@ export class OpenAIHttpAdapter extends HttpAdapter {
         messages: req.messages,
         temperature: req.temperature ?? 0.4,
         max_tokens: req.maxTokens,
+        // Force valid JSON at the API level (not just via prompt) when asked.
+        ...(req.responseFormat === "json"
+          ? { response_format: { type: "json_object" } }
+          : {}),
       },
     );
     return {
@@ -148,7 +152,13 @@ export class GeminiHttpAdapter extends HttpAdapter {
       {
         contents,
         systemInstruction: system ? { parts: [{ text: system }] } : undefined,
-        generationConfig: { temperature: req.temperature ?? 0.4, maxOutputTokens: req.maxTokens },
+        generationConfig: {
+          temperature: req.temperature ?? 0.4,
+          maxOutputTokens: req.maxTokens,
+          ...(req.responseFormat === "json"
+            ? { responseMimeType: "application/json" }
+            : {}),
+        },
       },
     );
     const text = (data.candidates?.[0]?.content?.parts ?? [])
