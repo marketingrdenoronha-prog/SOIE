@@ -3,19 +3,44 @@ import { PrismaClient } from "@prisma/client";
 /**
  * Single PrismaClient per process. In dev, cache on globalThis so hot-reload
  * doesn't open a new pool on every reload.
+ *
+ * On Neon (host contains `neon.tech`), we swap in the Neon serverless driver
+ * adapter — Prisma queries flow over Neon's HTTP fetch API instead of the
+ * native query engine binary. That frees the deployment from carrying a
+ * ~15 MB .so.node in every serverless function, which was blowing past
+ * Vercel's 250 MB per-function limit as we grew /api/** routes.
+ *
+ * Everywhere else (local Postgres, Docker, CI) it stays on the classic
+ * engine binary — the driver adapter is Neon-specific.
  */
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-export const prisma: PrismaClient =
-  globalForPrisma.prisma ??
-  new PrismaClient({
+function makeClient(): PrismaClient {
+  const url = process.env.DATABASE_URL ?? "";
+  const isNeon = /\bneon\.tech\b/.test(url);
+
+  if (isNeon) {
+    // Lazy require so bundlers on non-Neon targets don't pull the driver.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { PrismaNeon } = require("@prisma/adapter-neon");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { Pool } = require("@neondatabase/serverless");
+    const pool = new Pool({ connectionString: url });
+    const adapter = new PrismaNeon(pool);
+    return new PrismaClient({ adapter, log: ["error"] });
+  }
+
+  return new PrismaClient({
     log:
       process.env.NODE_ENV === "development"
         ? ["warn", "error"]
         : ["error"],
   });
+}
+
+export const prisma: PrismaClient = globalForPrisma.prisma ?? makeClient();
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;

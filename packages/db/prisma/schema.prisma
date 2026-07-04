@@ -11,8 +11,10 @@
 
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["postgresqlExtensions"]
-  // native = local dev; debian = Docker; rhel-openssl-3.0.x = Vercel serverless.
+  previewFeatures = ["postgresqlExtensions", "driverAdapters"]
+  // Kept only for local dev / CI where the Node client falls back to the
+  // engine binary. On Vercel the Neon serverless driver adapter is used,
+  // which bypasses the engine entirely (see packages/db/src/client.ts).
   binaryTargets   = ["native", "debian-openssl-3.0.x", "rhel-openssl-3.0.x"]
 }
 
