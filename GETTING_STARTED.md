@@ -72,10 +72,24 @@ cd apps/api && node <caminho-do-tsx> scripts/smoke.mts
 | `@soie/config`, `@soie/contracts` | ✅ typecheck limpo |
 | `@soie/db` — schema Prisma completo (Fase 2) + seed | ✅ `prisma validate` OK |
 | `@soie/ai` — Gateway, fallback, Orchestrator, AgentRunner, CostGuard | ✅ smoke test E2E OK |
-| `apps/api` — tenant/RLS, auth (register/login), clients, ai, health | ✅ typecheck limpo |
+| `@soie/ai` — adapters reais (OpenAI/Anthropic/Gemini/DeepSeek via HTTP) | ✅ com fallback p/ stub sem chave |
+| `@soie/queue` — filas BullMQ (enqueue/worker) | ✅ typecheck limpo |
+| `apps/api` — tenant/RLS, auth (register/login), clients, ai (enfileira), health | ✅ typecheck limpo |
+| `apps/worker` — consumidor da fila de orquestração, persiste execuções | ✅ typecheck limpo |
 | `apps/web` — app shell (sidebar, topbar, dark mode), dashboard, IA | ✅ typecheck limpo |
-| Adapters reais de IA (OpenAI/Anthropic/Gemini/DeepSeek) | ⏳ stub → plugar SDKs |
-| Workers/filas BullMQ, conectores externos, RAG/embeddings ao vivo | ⏳ próximos |
-| Migração SQL de RLS + billing Stripe + WebSocket de progresso | ⏳ próximos |
+| RLS — `prisma/sql/rls.sql` + `pnpm --filter @soie/db rls` | ✅ script pronto |
+| Deploy — Dockerfiles, `render.yaml`, `vercel.json` (ver `DEPLOY.md`) | ✅ pronto |
+| Conectores externos, RAG/embeddings ao vivo, WebSocket de progresso | ⏳ próximos |
+| Billing Stripe, prompt/agent versioning na UI | ⏳ próximos |
 
 Os pontos ⏳ têm as interfaces e contratos já definidos — falta a fiação com os serviços externos.
+
+### Rodar o worker
+
+```bash
+pnpm --filter @soie/worker dev   # consome a fila ai:orchestrate
+```
+
+A API enfileira as missões (`POST /api/v1/ai/projects/:id/run` → `{ runId, jobId }`)
+e o worker as executa, gravando `ai_executions` e atualizando o `orchestration_run`.
+Acompanhe por `GET /api/v1/ai/runs/:runId`.

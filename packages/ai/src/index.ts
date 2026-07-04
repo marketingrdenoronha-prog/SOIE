@@ -1,7 +1,13 @@
 export * from "./gateway/types.js";
 export { AIGateway, type ModelPolicy, type GatewayResult } from "./gateway/ai-gateway.js";
-export { buildAdapters } from "./gateway/adapters/index.js";
+export { buildAdapters, type ProviderKeys } from "./gateway/adapters/index.js";
 export { BaseAdapter, estimateTokens } from "./gateway/adapters/base.adapter.js";
+export {
+  OpenAIHttpAdapter,
+  AnthropicHttpAdapter,
+  GeminiHttpAdapter,
+  DeepSeekHttpAdapter,
+} from "./gateway/adapters/http.adapter.js";
 export { computeCost, type ModelPrice } from "./cost/price-book.js";
 export { CostGuard, type Budget, type BudgetDecision } from "./cost/cost-guard.js";
 export {

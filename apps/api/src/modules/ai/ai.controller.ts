@@ -19,6 +19,11 @@ export class AiController {
     return this.ai.listExecutions();
   }
 
+  @Get("runs/:runId")
+  run(@Param("runId") runId: string) {
+    return this.ai.getRun(runId);
+  }
+
   @Post("projects/:projectId/run")
   startRun(@Param("projectId") projectId: string, @Body() body: unknown) {
     const { kind, input } = startRunBody.parse(body);

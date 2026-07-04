@@ -1,0 +1,28 @@
+# Multi-stage build for the SOIE worker (BullMQ consumers).
+# Build context is the repo root: docker build -f infra/Dockerfile.worker .
+FROM node:22-slim AS base
+ENV PNPM_HOME=/pnpm
+ENV PATH=$PNPM_HOME:$PATH
+RUN corepack enable
+WORKDIR /app
+
+FROM base AS deps
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY packages/config/package.json packages/config/
+COPY packages/contracts/package.json packages/contracts/
+COPY packages/db/package.json packages/db/
+COPY packages/ai/package.json packages/ai/
+COPY packages/queue/package.json packages/queue/
+COPY apps/worker/package.json apps/worker/
+RUN pnpm install --frozen-lockfile
+
+FROM deps AS build
+COPY . .
+RUN pnpm --filter @soie/db generate \
+ && pnpm --filter @soie/worker build
+
+FROM base AS runtime
+ENV NODE_ENV=production
+COPY --from=build /app /app
+WORKDIR /app/apps/worker
+CMD ["node", "dist/main.js"]

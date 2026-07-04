@@ -7,7 +7,7 @@ import type {
   ProviderAdapter,
 } from "./types.js";
 import { ProviderError } from "./types.js";
-import { buildAdapters } from "./adapters/index.js";
+import { buildAdapters, type ProviderKeys } from "./adapters/index.js";
 
 export interface ModelPolicy {
   /** Preferred provider/model per task; "auto" lets the gateway pick. */
@@ -29,8 +29,14 @@ export interface GatewayResult extends CompletionResult {
 export class AIGateway {
   private readonly adapters: Record<AIProvider, ProviderAdapter>;
 
-  constructor(adapters?: Record<AIProvider, ProviderAdapter>) {
-    this.adapters = adapters ?? buildAdapters();
+  /** Pass provider keys to enable real HTTP adapters, or a ready-made adapter
+   * map (tests). With neither, all providers use deterministic stubs. */
+  constructor(opts?: ProviderKeys | { adapters: Record<AIProvider, ProviderAdapter> }) {
+    if (opts && "adapters" in opts) {
+      this.adapters = opts.adapters;
+    } else {
+      this.adapters = buildAdapters(opts);
+    }
   }
 
   async complete(

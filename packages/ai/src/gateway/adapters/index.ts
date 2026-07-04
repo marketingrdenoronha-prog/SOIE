@@ -1,25 +1,37 @@
 import type { AIProvider } from "@soie/contracts";
 import type { ProviderAdapter } from "../types.js";
 import { BaseAdapter } from "./base.adapter.js";
+import {
+  AnthropicHttpAdapter,
+  DeepSeekHttpAdapter,
+  GeminiHttpAdapter,
+  OpenAIHttpAdapter,
+} from "./http.adapter.js";
 
-class OpenAIAdapter extends BaseAdapter {
-  readonly provider = "openai" as const;
-}
-class AnthropicAdapter extends BaseAdapter {
-  readonly provider = "anthropic" as const;
-}
-class GeminiAdapter extends BaseAdapter {
-  readonly provider = "gemini" as const;
-}
-class DeepSeekAdapter extends BaseAdapter {
-  readonly provider = "deepseek" as const;
+/** Per-provider API keys (platform-level). Tenant BYOK keys are passed
+ * per-request via CompletionRequest.apiKey and take precedence. */
+export type ProviderKeys = Partial<Record<AIProvider, string | undefined>>;
+
+class StubAdapter extends BaseAdapter {
+  constructor(readonly provider: AIProvider) {
+    super();
+  }
 }
 
-export function buildAdapters(): Record<AIProvider, ProviderAdapter> {
+/**
+ * Builds the adapter map. When a provider has a key it gets the real HTTP
+ * adapter; otherwise a deterministic stub, so the orchestrator and pipelines
+ * run end-to-end offline (tests, demos) and light up for real once keys exist.
+ */
+export function buildAdapters(keys: ProviderKeys = {}): Record<AIProvider, ProviderAdapter> {
   return {
-    openai: new OpenAIAdapter(),
-    anthropic: new AnthropicAdapter(),
-    gemini: new GeminiAdapter(),
-    deepseek: new DeepSeekAdapter(),
+    openai: keys.openai ? new OpenAIHttpAdapter(keys.openai) : new StubAdapter("openai"),
+    anthropic: keys.anthropic
+      ? new AnthropicHttpAdapter(keys.anthropic)
+      : new StubAdapter("anthropic"),
+    gemini: keys.gemini ? new GeminiHttpAdapter(keys.gemini) : new StubAdapter("gemini"),
+    deepseek: keys.deepseek
+      ? new DeepSeekHttpAdapter(keys.deepseek)
+      : new StubAdapter("deepseek"),
   };
 }

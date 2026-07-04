@@ -1,0 +1,32 @@
+# Multi-stage build for the SOIE API (NestJS).
+# Build context is the repo root: docker build -f infra/Dockerfile.api .
+FROM node:22-slim AS base
+ENV PNPM_HOME=/pnpm
+ENV PATH=$PNPM_HOME:$PATH
+RUN corepack enable
+WORKDIR /app
+
+# ---- deps: install with the full workspace manifest set ----
+FROM base AS deps
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY packages/config/package.json packages/config/
+COPY packages/contracts/package.json packages/contracts/
+COPY packages/db/package.json packages/db/
+COPY packages/ai/package.json packages/ai/
+COPY packages/queue/package.json packages/queue/
+COPY apps/api/package.json apps/api/
+RUN pnpm install --frozen-lockfile
+
+# ---- build ----
+FROM deps AS build
+COPY . .
+RUN pnpm --filter @soie/db generate \
+ && pnpm --filter @soie/api build
+
+# ---- runtime ----
+FROM base AS runtime
+ENV NODE_ENV=production
+COPY --from=build /app /app
+WORKDIR /app/apps/api
+EXPOSE 3333
+CMD ["node", "dist/main.js"]

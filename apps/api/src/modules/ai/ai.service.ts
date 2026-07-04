@@ -1,29 +1,17 @@
-import { Injectable } from "@nestjs/common";
-import {
-  AIGateway,
-  AgentRunner,
-  Orchestrator,
-  type AgentDefinition,
-  type ModelPrice,
-} from "@soie/ai";
+import { Injectable, NotFoundException } from "@nestjs/common";
+import { QUEUES, enqueue } from "@soie/queue";
 import type { OrchestrationKind } from "@soie/contracts";
 import { PrismaService } from "../../common/prisma/prisma.service.js";
 import { TenantStore } from "../../common/tenant/tenant-context.js";
 
 /**
- * Bridges the API to the AI package. In production the actual run is enqueued
- * to BullMQ and executed by a worker; here we wire the orchestrator directly
- * so the flow is exercisable. Agent definitions and prices are resolved from
- * the database (agents/agent_versions, ai_price_book).
+ * AI module service. Missions are not run in the request — they are persisted
+ * as an OrchestrationRun and enqueued to BullMQ; the worker executes the agent
+ * DAG and streams progress back (Architecture Phase 1.2 async contract). The
+ * API stays fast and never blocks on an LLM call.
  */
 @Injectable()
 export class AiService {
-  private readonly gateway = new AIGateway();
-  private readonly runner = new AgentRunner({
-    gateway: this.gateway,
-    resolvePrice: (provider, model) => this.priceFallback(provider, model),
-  });
-
   constructor(private readonly prisma: PrismaService) {}
 
   async listExecutions() {
@@ -37,6 +25,16 @@ export class AiService {
     );
   }
 
+  async getRun(runId: string) {
+    const { organizationId } = TenantStore.require();
+    const run = await this.prisma.forTenant(organizationId, (tx) =>
+      tx.orchestrationRun.findFirst({ where: { id: runId, organizationId } }),
+    );
+    if (!run) throw new NotFoundException("Run not found");
+    return run;
+  }
+
+  /** Persists the run and enqueues it; returns 202-style { runId, jobId }. */
   async startRun(projectId: string, kind: OrchestrationKind, input: unknown) {
     const { organizationId, userId } = TenantStore.require();
 
@@ -46,70 +44,19 @@ export class AiService {
           organizationId,
           projectId,
           kind,
-          status: "running",
-          input: input as object,
+          status: "queued",
+          input: (input ?? {}) as object,
           triggeredBy: userId,
-          startedAt: new Date(),
         },
       }),
     );
 
-    const orchestrator = new Orchestrator({
-      runner: this.runner,
-      resolveAgent: (key) => this.resolveAgent(key),
-      onStep: async (step) => {
-        // Real impl emits WebSocket progress + appends to orchestration_runs.steps
-        void step;
-      },
-    });
-
-    const result = await orchestrator.run({
-      runId: run.id,
-      organizationId,
-      projectId,
-      kind,
-      input,
-    });
-
-    await this.prisma.forTenant(organizationId, (tx) =>
-      tx.orchestrationRun.update({
-        where: { id: run.id },
-        data: {
-          status: result.status,
-          totalCost: result.totalCostUsd,
-          steps: result.steps as unknown as object,
-          finishedAt: new Date(),
-        },
-      }),
+    const jobId = await enqueue(
+      QUEUES.orchestrate,
+      { runId: run.id, organizationId, projectId, kind, input },
+      { jobId: run.id },
     );
 
-    return { runId: run.id, status: result.status, totalCostUsd: result.totalCostUsd };
-  }
-
-  private async resolveAgent(
-    key: AgentDefinition["key"],
-  ): Promise<AgentDefinition> {
-    // Simplified: real impl loads the active agent_version + prompt_version.
-    return {
-      key,
-      version: 1,
-      systemPrompt: `Você é o Agente ${key} do SOIE. Siga a Constituição do sistema.`,
-      modelPolicy: {
-        preferred: { provider: "anthropic", model: "claude-sonnet" },
-        fallback: [
-          { provider: "openai", model: "gpt-4o" },
-          { provider: "gemini", model: "gemini-1.5-pro" },
-        ],
-      },
-    };
-  }
-
-  private priceFallback(provider: string, model: string): ModelPrice {
-    return {
-      provider: provider as ModelPrice["provider"],
-      model,
-      inputPricePer1k: 0.003,
-      outputPricePer1k: 0.015,
-    };
+    return { runId: run.id, jobId, status: "queued" as const };
   }
 }

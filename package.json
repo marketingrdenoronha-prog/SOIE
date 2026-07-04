@@ -29,6 +29,9 @@
       "argon2",
       "esbuild",
       "sharp"
-    ]
+    ],
+    "overrides": {
+      "ioredis": "5.11.1"
+    }
   }
 }

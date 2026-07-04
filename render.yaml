@@ -1,0 +1,70 @@
+# Render blueprint for the SOIE backend (API + worker + Postgres + Redis).
+# The web app deploys to Vercel (see vercel.json). Import this repo in Render
+# and it provisions everything below. Set the AI provider keys as secrets.
+databases:
+  - name: soie-db
+    databaseName: soie
+    user: soie
+    plan: basic-256mb
+    # pgvector: enable the extension once via `CREATE EXTENSION vector;`
+    # (Render Postgres supports it) then run migrations + rls.
+
+services:
+  - type: redis
+    name: soie-redis
+    plan: starter
+    maxmemoryPolicy: noeviction
+    ipAllowList: []
+
+  - type: web
+    name: soie-api
+    runtime: docker
+    dockerfilePath: ./infra/Dockerfile.api
+    dockerContext: .
+    plan: starter
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_PORT
+        value: "3333"
+      - key: DATABASE_URL
+        fromDatabase: { name: soie-db, property: connectionString }
+      - key: REDIS_URL
+        fromService: { name: soie-redis, type: redis, property: connectionString }
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: APP_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
+
+  - type: worker
+    name: soie-worker
+    runtime: docker
+    dockerfilePath: ./infra/Dockerfile.worker
+    dockerContext: .
+    plan: starter
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase: { name: soie-db, property: connectionString }
+      - key: REDIS_URL
+        fromService: { name: soie-redis, type: redis, property: connectionString }
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
