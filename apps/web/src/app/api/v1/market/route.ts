@@ -52,40 +52,52 @@ export async function POST(req: Request) {
       },
     });
 
-    const [market, competition] = await Promise.all([
-      runAgent("market", { brand: project.brand.name, positioning: project.brand.positioning, brief: input.brief }),
-      runAgent("competition", { brand: project.brand.name, positioning: project.brand.positioning, brief: input.brief }),
-    ]);
+    // Any failure below (AI provider, parsing, persistence) must not leave the
+    // research stuck on "running" forever — record it as "failed" with the
+    // error message so the UI can surface it and the user can retry.
+    try {
+      const [market, competition] = await Promise.all([
+        runAgent("market", { brand: project.brand.name, positioning: project.brand.positioning, brief: input.brief }),
+        runAgent("competition", { brand: project.brand.name, positioning: project.brand.positioning, brief: input.brief }),
+      ]);
 
-    await Promise.all([
-      prisma.marketAnalysis.create({
+      await Promise.all([
+        prisma.marketAnalysis.create({
+          data: {
+            organizationId: org, projectId: input.projectId, researchId: research.id,
+            swot: market.swot ?? {}, trends: market.trends ?? [],
+            opportunities: market.opportunities ?? [], threats: market.threats ?? [],
+            confidence: (market.confidence as "high" | "medium" | "low") ?? "medium",
+          },
+        }),
+        prisma.competitor.createMany({
+          data: (competition.competitors ?? []).map((c: {
+            name: string; url?: string; positioning?: string; strengths?: string[]; weaknesses?: string[];
+          }) => ({
+            organizationId: org, projectId: input.projectId, researchId: research.id,
+            name: c.name, url: c.url, positioning: c.positioning,
+            strengths: c.strengths ?? [], weaknesses: c.weaknesses ?? [],
+          })),
+        }),
+      ]);
+
+      await prisma.research.update({
+        where: { id: research.id },
         data: {
-          organizationId: org, projectId: input.projectId, researchId: research.id,
-          swot: market.swot ?? {}, trends: market.trends ?? [],
-          opportunities: market.opportunities ?? [], threats: market.threats ?? [],
+          status: "succeeded",
+          summary: { market: market.summary, competitors: (competition.competitors ?? []).length },
           confidence: (market.confidence as "high" | "medium" | "low") ?? "medium",
         },
-      }),
-      prisma.competitor.createMany({
-        data: (competition.competitors ?? []).map((c: {
-          name: string; url?: string; positioning?: string; strengths?: string[]; weaknesses?: string[];
-        }) => ({
-          organizationId: org, projectId: input.projectId, researchId: research.id,
-          name: c.name, url: c.url, positioning: c.positioning,
-          strengths: c.strengths ?? [], weaknesses: c.weaknesses ?? [],
-        })),
-      }),
-    ]);
+      });
 
-    await prisma.research.update({
-      where: { id: research.id },
-      data: {
-        status: "succeeded",
-        summary: { market: market.summary, competitors: (competition.competitors ?? []).length },
-        confidence: (market.confidence as "high" | "medium" | "low") ?? "medium",
-      },
-    });
-
-    return ok({ researchId: research.id, status: "succeeded" }, 201);
+      return ok({ researchId: research.id, status: "succeeded" }, 201);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await prisma.research.update({
+        where: { id: research.id },
+        data: { status: "failed", summary: { error: message } },
+      });
+      throw err;
+    }
   });
 }
