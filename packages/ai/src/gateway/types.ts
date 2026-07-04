@@ -15,6 +15,9 @@ export interface CompletionRequest {
   apiKey?: string;
   /** JSON schema the provider must conform its output to, when supported. */
   responseSchema?: unknown;
+  /** Forces the provider to emit strict JSON (OpenAI/DeepSeek json_object,
+   * Gemini responseMimeType). Defaults to free-form text. */
+  responseFormat?: "json" | "text";
 }
 
 export interface TokenUsage {
