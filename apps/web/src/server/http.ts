@@ -23,7 +23,11 @@ export function handle(
       return fail(err.code, err.message, err.status);
     }
     console.error("route error", err);
-    return fail("internal_error", "Erro inesperado", 500);
+    // Include the underlying error message so the client sees the real cause
+    // (Prisma-not-connected, missing table, JWT-secret-missing, etc.) instead
+    // of a useless "Erro inesperado" — no stack, no PII, safe to expose.
+    const detail = err instanceof Error ? err.message : String(err);
+    return fail("internal_error", detail || "Erro inesperado", 500);
   });
 }
 
