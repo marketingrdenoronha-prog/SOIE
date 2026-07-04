@@ -8,12 +8,15 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://user:pass@localhost:5432/db
+      API_URL: http://localhost:3333
     steps:
       - uses: actions/checkout@v4
 
+      # No `version:` here — pnpm/action-setup reads it from package.json's
+      # `packageManager` field. Specifying both errors with a version conflict.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - uses: actions/setup-node@v4
         with:
@@ -25,13 +28,14 @@ jobs:
 
       - name: Generate Prisma client
         run: pnpm --filter @soie/db generate
-        env:
-          DATABASE_URL: postgresql://user:pass@localhost:5432/db
 
       - name: Validate Prisma schema
         run: pnpm --filter @soie/db validate
-        env:
-          DATABASE_URL: postgresql://user:pass@localhost:5432/db
+
+      # Build first: produces package dist and Next's generated types, so the
+      # typecheck step below (which the web app needs .next/types for) passes.
+      - name: Build (packages then apps, in dependency order)
+        run: pnpm build
 
       - name: Typecheck (all packages and apps)
         run: |
@@ -41,8 +45,3 @@ jobs:
           pnpm --filter @soie/api exec tsc -p tsconfig.json --noEmit
           pnpm --filter @soie/worker exec tsc -p tsconfig.json --noEmit
           pnpm --filter @soie/web exec tsc --noEmit
-
-      - name: Build all (packages then apps, in dependency order)
-        run: pnpm build
-        env:
-          API_URL: http://localhost:3333
