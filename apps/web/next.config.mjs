@@ -20,8 +20,20 @@ const nextConfig = {
   outputFileTracingRoot: path.join(__dirname, "../../"),
   outputFileTracingIncludes: {
     "/api/**/*": [
-      "../../node_modules/.pnpm/**/node_modules/.prisma/client/**",
+      "../../node_modules/.pnpm/**/node_modules/.prisma/client/*.node",
       "../../node_modules/.pnpm/**/node_modules/@prisma/client/**",
+    ],
+  },
+  // Exclude the platform binaries we don't need on Vercel (Amazon Linux =
+  // rhel-openssl-3.0.x). Keeping darwin/windows/debian bloats each function
+  // above the 250 MB limit once every /api/** includes them.
+  outputFileTracingExcludes: {
+    "/api/**/*": [
+      "../../node_modules/.pnpm/**/node_modules/.prisma/client/libquery_engine-darwin*",
+      "../../node_modules/.pnpm/**/node_modules/.prisma/client/libquery_engine-windows*",
+      "../../node_modules/.pnpm/**/node_modules/.prisma/client/libquery_engine-debian*",
+      "../../node_modules/.pnpm/**/node_modules/@prisma/engines/*.node",
+      "../../node_modules/.pnpm/**/node_modules/@prisma/engines/**",
     ],
   },
 };
