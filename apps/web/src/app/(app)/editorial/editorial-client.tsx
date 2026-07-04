@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { text, arr } from "@/lib/render";
 import { PageHeader } from "@/components/page-header";
 import { ProjectPicker } from "@/components/project-picker";
 
@@ -65,31 +66,31 @@ export function EditorialClient() {
         strategies.length === 0 ? <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted">Sem estratégia ainda.</p> :
         strategies.map((s) => (
           <div key={s.id} className="rounded-xl border border-border bg-elevated p-5 space-y-4">
-            {s.positioning && <div><p className="text-xs font-medium uppercase tracking-wider text-muted">Posicionamento</p><p className="mt-1 text-sm">{s.positioning}</p></div>}
-            {s.pillars?.length > 0 && <div><p className="text-xs font-medium uppercase tracking-wider text-muted">Pilares</p><div className="mt-1 flex flex-wrap gap-2">{s.pillars.map((p: string, i: number) => <span key={i} className="rounded-md bg-brand/10 px-2 py-0.5 text-xs text-brand">{p}</span>)}</div></div>}
+            {s.positioning && <div><p className="text-xs font-medium uppercase tracking-wider text-muted">Posicionamento</p><p className="mt-1 text-sm">{text(s.positioning)}</p></div>}
+            {arr(s.pillars).length > 0 && <div><p className="text-xs font-medium uppercase tracking-wider text-muted">Pilares</p><div className="mt-1 flex flex-wrap gap-2">{arr(s.pillars).map((p: unknown, i: number) => <span key={i} className="rounded-md bg-brand/10 px-2 py-0.5 text-xs text-brand">{text(p)}</span>)}</div></div>}
             {s.editorialLines?.map((line: {
               id: string; name: string; objective: string; funnelStage: string; platforms?: string[];
               categories?: { id: string; name: string; themes?: { id: string; title: string }[] }[]
             }) => (
               <div key={line.id} className="rounded-lg border border-border p-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-medium">{line.name}</p>
-                  <span className="rounded-md bg-brand/10 px-2 py-0.5 text-xs text-brand">{line.objective}</span>
-                  <span className="rounded-md bg-border/50 px-2 py-0.5 text-xs">{line.funnelStage}</span>
-                  {line.platforms?.map((p, i) => <span key={i} className="rounded-md bg-border/50 px-2 py-0.5 text-xs">{p}</span>)}
+                  <p className="font-medium">{text(line.name)}</p>
+                  <span className="rounded-md bg-brand/10 px-2 py-0.5 text-xs text-brand">{text(line.objective)}</span>
+                  <span className="rounded-md bg-border/50 px-2 py-0.5 text-xs">{text(line.funnelStage)}</span>
+                  {arr(line.platforms).map((p, i) => <span key={i} className="rounded-md bg-border/50 px-2 py-0.5 text-xs">{text(p)}</span>)}
                 </div>
                 {line.categories?.map((c) => (
                   <div key={c.id} className="mt-2">
-                    <p className="text-sm font-medium">{c.name}</p>
+                    <p className="text-sm font-medium">{text(c.name)}</p>
                     <div className="mt-1 flex flex-wrap gap-1.5">
                       {c.themes?.map((t) => (
                         <button
                           key={t.id}
-                          onClick={() => setDropTheme(t.title)}
+                          onClick={() => setDropTheme(text(t.title))}
                           title="Dropar este tema em uma entrega"
                           className="group inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs hover:border-brand hover:text-brand"
                         >
-                          {t.title}
+                          {text(t.title)}
                           <span className="text-muted group-hover:text-brand">↓</span>
                         </button>
                       ))}
