@@ -20,7 +20,17 @@ Além do sistema de prompts, o repositório abriga o projeto da **plataforma Saa
 
 Toda a **engenharia do sistema** (Fases 1 a 8: arquitetura, banco, módulos, agentes, fluxo, UX, backend e subsistema de IA) está documentada em [`arquitetura/`](arquitetura/), produzida **antes de qualquer código de aplicação**.
 
-> **Status:** apenas a documentação de arquitetura está pronta. A implementação (código) começará em fases seguintes, sobre este projeto.
+### Código
+
+O scaffold funcional do monorepo já está implementado. Veja [`GETTING_STARTED.md`](GETTING_STARTED.md) para rodar localmente.
+
+```
+apps/api    NestJS — multi-tenancy (RLS), auth, clientes, orquestração de IA, health
+apps/web    Next.js — app shell (sidebar, dark mode), dashboard, módulo de IA
+packages/   config · contracts (Zod) · db (Prisma, todas as entidades) · ai (Gateway + Orchestrator)
+```
+
+Estado: todos os pacotes passam no `typecheck`, o schema Prisma passa no `prisma validate` e o Orchestrator de agentes roda de ponta a ponta (pipeline `research`). Os adapters de IA, workers/filas, RAG ao vivo e billing têm interfaces prontas e ficam para as próximas fases — detalhes na tabela de estado em [`GETTING_STARTED.md`](GETTING_STARTED.md).
 
 ## Parte 1 — Constituição do Sistema
 

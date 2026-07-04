@@ -1,0 +1,1302 @@
+// SOIE — Prisma schema (Architecture Phase 2)
+//
+// Multi-tenancy: every business table carries `organizationId` as an indexed
+// scalar. It is intentionally NOT modeled as a Prisma relation to Organization
+// — with dozens of tenant tables that would force an unwieldy back-relation
+// list on Organization and cascade semantics we handle explicitly per tenant.
+// Isolation is enforced at two layers regardless: the repository layer always
+// scopes by organizationId, and Postgres Row-Level Security (added via SQL
+// migration) is the backstop. Meaningful parent/child links (client → brand →
+// project → …) ARE modeled as relations.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector")]
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────────────────
+
+enum OrgStatus {
+  active
+  suspended
+  trialing
+}
+
+enum MembershipStatus {
+  active
+  invited
+  disabled
+}
+
+enum ProjectStatus {
+  onboarding
+  research
+  strategy
+  production
+  review
+  done
+  archived
+}
+
+enum Confidence {
+  high
+  medium
+  low
+}
+
+enum ResearchType {
+  market
+  competitor
+  trend
+  audience
+  full
+}
+
+enum FunnelStage {
+  tofu
+  mofu
+  bofu
+}
+
+enum EditorialObjective {
+  authority
+  trust
+  educate
+  reduce_objection
+  attract
+  identify
+  position
+  desire
+  relationship
+  convert
+}
+
+enum ContentStatus {
+  draft
+  in_review
+  approved
+  published
+  archived
+}
+
+enum ApprovalStatus {
+  pending
+  approved
+  changes_requested
+  rejected
+}
+
+enum AIProvider {
+  openai
+  anthropic
+  gemini
+  deepseek
+}
+
+enum ExecutionStatus {
+  success
+  error
+  fallback
+}
+
+enum OrchestrationStatus {
+  queued
+  running
+  succeeded
+  failed
+  partial
+}
+
+enum MemoryScope {
+  org
+  client
+  brand
+  project
+}
+
+enum SubscriptionStatus {
+  trialing
+  active
+  past_due
+  canceled
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Identity & Access
+// ─────────────────────────────────────────────────────────────────────────
+
+model Organization {
+  id           String    @id @default(uuid()) @db.Uuid
+  name         String
+  slug         String    @unique
+  status       OrgStatus @default(trialing)
+  billingEmail String?
+  byokEnabled  Boolean   @default(false)
+  settings     Json      @default("{}")
+  planId       String?   @db.Uuid
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  memberships   Membership[]
+  roles         Role[]
+  subscriptions Subscription[]
+
+  @@map("organizations")
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  name         String
+  passwordHash String
+  avatarUrl    String?
+  mfaSecret    String?
+  status       String    @default("active")
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  memberships Membership[]
+  sessions    Session[]
+
+  @@map("users")
+}
+
+model Membership {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  userId         String           @db.Uuid
+  roleId         String           @db.Uuid
+  status         MembershipStatus @default(invited)
+  scope          Json             @default("{}")
+  invitedBy      String?          @db.Uuid
+  createdAt      DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role         Role         @relation(fields: [roleId], references: [id])
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@map("memberships")
+}
+
+model Role {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String?  @db.Uuid
+  name           String
+  isSystem       Boolean  @default(false)
+  permissions    Json     @default("[]")
+  createdAt      DateTime @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberships  Membership[]
+
+  @@index([organizationId])
+  @@map("roles")
+}
+
+model ApiKey {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  name           String
+  keyHash        String
+  prefix         String
+  scopes         Json      @default("[]")
+  lastUsedAt     DateTime?
+  expiresAt      DateTime?
+  createdBy      String?   @db.Uuid
+  revokedAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([organizationId])
+  @@map("api_keys")
+}
+
+model Session {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @db.Uuid
+  organizationId   String    @db.Uuid
+  refreshTokenHash String
+  userAgent        String?
+  ip               String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Client Management
+// ─────────────────────────────────────────────────────────────────────────
+
+model Client {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  name           String
+  industry       String?
+  website        String?
+  logoUrl        String?
+  status         String    @default("active")
+  tags           Json      @default("[]")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  brands    Brand[]
+  briefings Briefing[]
+
+  @@index([organizationId])
+  @@map("clients")
+}
+
+model Brand {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @db.Uuid
+  clientId         String   @db.Uuid
+  name             String
+  positioning      String?
+  valueProposition String?
+  products         Json     @default("[]")
+  objectives       Json     @default("[]")
+  icp              Json     @default("{}")
+  createdAt        DateTime @default(now())
+
+  client      Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  projects    Project[]
+  brandVoices BrandVoice[]
+  vocabularies Vocabulary[]
+  archetypes  Archetype[]
+
+  @@index([organizationId])
+  @@index([clientId])
+  @@map("brands")
+}
+
+model Project {
+  id               String        @id @default(uuid()) @db.Uuid
+  organizationId   String        @db.Uuid
+  brandId          String        @db.Uuid
+  name             String
+  goal             String?
+  status           ProjectStatus @default(onboarding)
+  funnelStageFocus FunnelStage?
+  platforms        Json          @default("[]")
+  startsAt         DateTime?
+  endsAt           DateTime?
+  createdAt        DateTime      @default(now())
+
+  brand              Brand               @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  researches         Research[]
+  personas           Persona[]
+  editorialStrategies EditorialStrategy[]
+  calendars          Calendar[]
+  contents           Content[]
+  contentIdeas       ContentIdea[]
+  orchestrationRuns  OrchestrationRun[]
+
+  @@index([organizationId])
+  @@index([brandId])
+  @@map("projects")
+}
+
+model Briefing {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  clientId       String   @db.Uuid
+  projectId      String?  @db.Uuid
+  payload        Json     @default("{}")
+  source         String   @default("form")
+  status         String   @default("draft")
+  createdBy      String?  @db.Uuid
+  createdAt      DateTime @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([clientId])
+  @@map("briefings")
+}
+
+model File {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  clientId       String?  @db.Uuid
+  projectId      String?  @db.Uuid
+  name           String
+  mimeType       String
+  sizeBytes      Int
+  storageKey     String
+  checksum       String?
+  uploadedBy     String?  @db.Uuid
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@map("files")
+}
+
+model Upload {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  fileId         String?  @db.Uuid
+  status         String   @default("pending")
+  parseResult    Json     @default("{}")
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@map("uploads")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Brand DNA
+// ─────────────────────────────────────────────────────────────────────────
+
+model BrandVoice {
+  id             String     @id @default(uuid()) @db.Uuid
+  organizationId String     @db.Uuid
+  brandId        String     @db.Uuid
+  tone           Json       @default("{}")
+  formality      String?
+  emojisPolicy   Json       @default("{}")
+  doList         Json       @default("[]")
+  dontList       Json       @default("[]")
+  examples       Json       @default("[]")
+  confidence     Confidence @default(medium)
+  createdAt      DateTime   @default(now())
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([brandId])
+  @@map("brand_voices")
+}
+
+model Vocabulary {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @db.Uuid
+  brandId        String @db.Uuid
+  kind           String
+  term           String
+  note           String?
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([brandId])
+  @@map("vocabularies")
+}
+
+model Archetype {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @db.Uuid
+  brandId        String @db.Uuid
+  archetype      String
+  weight         Float  @default(0)
+  rationale      String?
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([brandId])
+  @@map("archetypes")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Market Intelligence
+// ─────────────────────────────────────────────────────────────────────────
+
+model Research {
+  id                 String       @id @default(uuid()) @db.Uuid
+  organizationId     String       @db.Uuid
+  projectId          String       @db.Uuid
+  type               ResearchType
+  status             String       @default("queued")
+  params             Json         @default("{}")
+  summary            Json         @default("{}")
+  confidence         Confidence   @default(low)
+  orchestrationRunId String?      @db.Uuid
+  createdBy          String?      @db.Uuid
+  createdAt          DateTime     @default(now())
+
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  competitors    Competitor[]
+  marketAnalyses MarketAnalysis[]
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("researches")
+}
+
+model Competitor {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String  @db.Uuid
+  projectId      String  @db.Uuid
+  researchId     String? @db.Uuid
+  name           String
+  url            String?
+  positioning    String?
+  strengths      Json    @default("[]")
+  weaknesses     Json    @default("[]")
+  contentStrategy Json   @default("{}")
+  metrics        Json    @default("{}")
+  source         String  @default("ai")
+
+  research Research? @relation(fields: [researchId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("competitors")
+}
+
+model MarketAnalysis {
+  id             String     @id @default(uuid()) @db.Uuid
+  organizationId String     @db.Uuid
+  projectId      String     @db.Uuid
+  researchId     String?    @db.Uuid
+  swot           Json       @default("{}")
+  trends         Json       @default("[]")
+  opportunities  Json       @default("[]")
+  threats        Json       @default("[]")
+  confidence     Confidence @default(medium)
+  createdAt      DateTime   @default(now())
+
+  research Research? @relation(fields: [researchId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("market_analyses")
+}
+
+model Trend {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  projectId      String?  @db.Uuid
+  source         String
+  keyword        String
+  score          Float    @default(0)
+  timeseries     Json     @default("[]")
+  capturedAt     DateTime @default(now())
+
+  @@index([organizationId])
+  @@map("trends")
+}
+
+model NewsItem {
+  id             String                      @id @default(uuid()) @db.Uuid
+  organizationId String                      @db.Uuid
+  projectId      String?                     @db.Uuid
+  source         String
+  title          String
+  url            String
+  publishedAt    DateTime?
+  summary        String?
+  sentiment      String?
+  embedding      Unsupported("vector(1536)")?
+  createdAt      DateTime                    @default(now())
+
+  @@index([organizationId])
+  @@map("news_items")
+}
+
+model ConnectorRun {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  connector      String
+  status         String    @default("running")
+  request        Json      @default("{}")
+  resultRef      String?
+  itemsCount     Int       @default(0)
+  cost           Float     @default(0)
+  error          String?
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+
+  @@index([organizationId])
+  @@map("connector_runs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Audience Intelligence
+// ─────────────────────────────────────────────────────────────────────────
+
+model Persona {
+  id             String     @id @default(uuid()) @db.Uuid
+  organizationId String     @db.Uuid
+  projectId      String     @db.Uuid
+  name           String
+  demographics   Json       @default("{}")
+  psychographics Json       @default("{}")
+  channels       Json       @default("[]")
+  awarenessLevel String?
+  languageNotes  Json       @default("{}")
+  confidence     Confidence @default(medium)
+  createdAt      DateTime   @default(now())
+
+  project   Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  pains     Pain[]
+  objections Objection[]
+  desires   Desire[]
+  questions AudienceQuestion[]
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("personas")
+}
+
+model Pain {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @db.Uuid
+  personaId      String @db.Uuid
+  description    String
+  intensity      Int    @default(3)
+  evidence       Json   @default("[]")
+
+  persona Persona @relation(fields: [personaId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([personaId])
+  @@map("pains")
+}
+
+model Objection {
+  id              String @id @default(uuid()) @db.Uuid
+  organizationId  String @db.Uuid
+  personaId       String @db.Uuid
+  description     String
+  counterArgument String?
+  evidence        Json   @default("[]")
+
+  persona Persona @relation(fields: [personaId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([personaId])
+  @@map("objections")
+}
+
+model Desire {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @db.Uuid
+  personaId      String @db.Uuid
+  description    String
+  strength       Int    @default(3)
+
+  persona Persona @relation(fields: [personaId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([personaId])
+  @@map("desires")
+}
+
+model AudienceQuestion {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @db.Uuid
+  personaId      String @db.Uuid
+  question       String
+  source         String?
+  volumeHint     String?
+
+  persona Persona @relation(fields: [personaId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([personaId])
+  @@map("audience_questions")
+}
+
+model SentimentAnalysis {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  projectId      String   @db.Uuid
+  source         String
+  sampleSize     Int      @default(0)
+  distribution   Json     @default("{}")
+  themes         Json     @default("[]")
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("sentiment_analyses")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Editorial
+// ─────────────────────────────────────────────────────────────────────────
+
+model EditorialStrategy {
+  id             String     @id @default(uuid()) @db.Uuid
+  organizationId String     @db.Uuid
+  projectId      String     @db.Uuid
+  positioning    String?
+  pillars        Json       @default("[]")
+  objectives     Json       @default("{}")
+  rationale      String?
+  confidence     Confidence @default(medium)
+  status         String     @default("draft")
+  createdAt      DateTime   @default(now())
+
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  editorialLines EditorialLine[]
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("editorial_strategies")
+}
+
+model EditorialLine {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @db.Uuid
+  strategyId     String             @db.Uuid
+  name           String
+  objective      EditorialObjective
+  funnelStage    FunnelStage
+  platforms      Json               @default("[]")
+
+  strategy   EditorialStrategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  categories Category[]
+
+  @@index([organizationId])
+  @@index([strategyId])
+  @@map("editorial_lines")
+}
+
+model Category {
+  id              String  @id @default(uuid()) @db.Uuid
+  organizationId  String  @db.Uuid
+  editorialLineId String  @db.Uuid
+  name            String
+  description     String?
+  parentId        String? @db.Uuid
+
+  editorialLine EditorialLine @relation(fields: [editorialLineId], references: [id], onDelete: Cascade)
+  parent        Category?     @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children      Category[]    @relation("CategoryTree")
+  themes        Theme[]
+
+  @@index([organizationId])
+  @@index([editorialLineId])
+  @@map("categories")
+}
+
+model Theme {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @db.Uuid
+  categoryId     String @db.Uuid
+  title          String
+  angle          String?
+  microthemes    Json   @default("[]")
+  priority       Int    @default(0)
+
+  category     Category      @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  contentIdeas ContentIdea[]
+
+  @@index([organizationId])
+  @@index([categoryId])
+  @@map("themes")
+}
+
+model ContentIdea {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  projectId      String   @db.Uuid
+  themeId        String?  @db.Uuid
+  title          String
+  format         String?
+  funnelStage    FunnelStage?
+  objective      EditorialObjective?
+  rationale      String?
+  status         String   @default("suggested")
+  score          Json     @default("{}")
+  createdBy      String   @default("ai")
+  createdAt      DateTime @default(now())
+
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  theme    Theme?    @relation(fields: [themeId], references: [id], onDelete: SetNull)
+  contents Content[]
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("content_ideas")
+}
+
+model Content {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @db.Uuid
+  projectId      String        @db.Uuid
+  ideaId         String?       @db.Uuid
+  title          String
+  platform       String?
+  format         String?
+  status         ContentStatus @default(draft)
+  body           Json          @default("{}")
+  briefing       Json          @default("{}")
+  createdBy      String?       @db.Uuid
+  assignedTo     String?       @db.Uuid
+  version        Int           @default(1)
+  createdAt      DateTime      @default(now())
+
+  project Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  idea    ContentIdea? @relation(fields: [ideaId], references: [id], onDelete: SetNull)
+  posts   Post[]
+  copies  Copy[]
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("contents")
+}
+
+model Post {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @db.Uuid
+  contentId      String        @db.Uuid
+  platform       String
+  scheduledFor   DateTime?
+  publishedAt    DateTime?
+  externalRef    String?
+  status         ContentStatus @default(draft)
+  metrics        Json          @default("{}")
+
+  content        Content         @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  calendarEntries CalendarEntry[]
+
+  @@index([organizationId])
+  @@index([contentId])
+  @@map("posts")
+}
+
+model Copy {
+  id              String  @id @default(uuid()) @db.Uuid
+  organizationId  String  @db.Uuid
+  contentId       String? @db.Uuid
+  projectId       String  @db.Uuid
+  kind            String
+  text            String
+  frameworkId     String? @db.Uuid
+  hookId          String? @db.Uuid
+  variantLabel    String?
+  score           Json    @default("{}")
+  aiExecutionId   String? @db.Uuid
+
+  content Content? @relation(fields: [contentId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("copies")
+}
+
+model Calendar {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  projectId      String   @db.Uuid
+  name           String
+  timezone       String   @default("America/Sao_Paulo")
+  viewDefault    String   @default("month")
+  createdAt      DateTime @default(now())
+
+  project Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  entries CalendarEntry[]
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("calendars")
+}
+
+model CalendarEntry {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  calendarId     String   @db.Uuid
+  contentId      String?  @db.Uuid
+  postId         String?  @db.Uuid
+  date           DateTime
+  time           String?
+  status         String   @default("planned")
+  platform       String?
+  owner          String?  @db.Uuid
+  dragOrder      Int      @default(0)
+
+  calendar Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  post     Post?    @relation(fields: [postId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([calendarId])
+  @@map("calendar_entries")
+}
+
+model Approval {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @db.Uuid
+  subjectType    String
+  subjectId      String         @db.Uuid
+  requestedBy    String?        @db.Uuid
+  reviewer       String?        @db.Uuid
+  status         ApprovalStatus @default(pending)
+  comment        String?
+  decidedAt      DateTime?
+  createdAt      DateTime       @default(now())
+
+  @@index([organizationId])
+  @@index([subjectType, subjectId])
+  @@map("approvals")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Library
+// ─────────────────────────────────────────────────────────────────────────
+
+model Framework {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String?  @db.Uuid
+  name           String
+  kind           String?
+  structure      Json     @default("{}")
+  whenToUse      String?
+  examples       Json     @default("[]")
+  isSystem       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@map("frameworks")
+}
+
+model Hook {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String?  @db.Uuid
+  text           String
+  category       String?
+  emotion        String?
+  platformFit    Json     @default("[]")
+  performanceHint String?
+  isSystem       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@map("hooks")
+}
+
+model Template {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String?  @db.Uuid
+  name           String
+  format         String?
+  blocks         Json     @default("[]")
+  variables      Json     @default("[]")
+  isSystem       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@map("templates")
+}
+
+model Script {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String?  @db.Uuid
+  title          String
+  structure      Json     @default("{}")
+  durationHint   String?
+  isSystem       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@map("scripts")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AI Orchestration
+// ─────────────────────────────────────────────────────────────────────────
+
+model Agent {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String?  @db.Uuid
+  key             String
+  name            String
+  description     String?
+  activeVersionId String?  @db.Uuid
+  config          Json     @default("{}")
+  createdAt       DateTime @default(now())
+
+  versions AgentVersion[]
+
+  @@index([organizationId])
+  @@map("agents")
+}
+
+model AgentVersion {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String?  @db.Uuid
+  agentId          String   @db.Uuid
+  version          Int
+  systemPromptRef  String?  @db.Uuid
+  tools            Json     @default("[]")
+  modelPolicy      Json     @default("{}")
+  changelog        String?
+  createdBy        String?  @db.Uuid
+  createdAt        DateTime @default(now())
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, version])
+  @@index([organizationId])
+  @@map("agent_versions")
+}
+
+model Prompt {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String?  @db.Uuid
+  key             String
+  name            String
+  description     String?
+  activeVersionId String?  @db.Uuid
+  variablesSchema Json     @default("{}")
+  createdAt       DateTime @default(now())
+
+  versions PromptVersion[]
+
+  @@index([organizationId])
+  @@map("prompts")
+}
+
+model PromptVersion {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String?  @db.Uuid
+  promptId        String   @db.Uuid
+  version         Int
+  template        String
+  variables       Json     @default("[]")
+  notes           String?
+  validatorReport Json     @default("{}")
+  createdBy       String?  @db.Uuid
+  createdAt       DateTime @default(now())
+
+  prompt Prompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+
+  @@unique([promptId, version])
+  @@index([organizationId])
+  @@map("prompt_versions")
+}
+
+model OrchestrationRun {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @db.Uuid
+  projectId      String              @db.Uuid
+  kind           String
+  status         OrchestrationStatus @default(queued)
+  input          Json                @default("{}")
+  output         Json                @default("{}")
+  steps          Json                @default("[]")
+  totalCost      Float               @default(0)
+  confidence     Confidence?
+  triggeredBy    String?             @db.Uuid
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime            @default(now())
+
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  aiExecutions AIExecution[]
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("orchestration_runs")
+}
+
+model AIExecution {
+  id                 String          @id @default(uuid()) @db.Uuid
+  organizationId     String          @db.Uuid
+  orchestrationRunId String?         @db.Uuid
+  chatId             String?         @db.Uuid
+  agentId            String?         @db.Uuid
+  agentVersionId     String?         @db.Uuid
+  promptVersionId    String?         @db.Uuid
+  provider           AIProvider
+  model              String
+  inputTokens        Int             @default(0)
+  outputTokens       Int             @default(0)
+  latencyMs          Int             @default(0)
+  costUsd            Float           @default(0)
+  status             ExecutionStatus @default(success)
+  fallbackFrom       String?
+  cacheHit           Boolean         @default(false)
+  error              String?
+  requestRef         String?
+  responseRef        String?
+  createdAt          DateTime        @default(now())
+
+  run OrchestrationRun? @relation(fields: [orchestrationRunId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([orchestrationRunId])
+  @@index([provider, model])
+  @@map("ai_executions")
+}
+
+model Chat {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  projectId      String?  @db.Uuid
+  userId         String   @db.Uuid
+  title          String?
+  agentKey       String   @default("planning")
+  contextRef     Json     @default("{}")
+  createdAt      DateTime @default(now())
+
+  messages ChatMessage[]
+
+  @@index([organizationId])
+  @@map("chats")
+}
+
+model ChatMessage {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  chatId         String   @db.Uuid
+  role           String
+  content        Json     @default("{}")
+  aiExecutionId  String?  @db.Uuid
+  createdAt      DateTime @default(now())
+
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([chatId])
+  @@map("chat_messages")
+}
+
+model Memory {
+  id             String                      @id @default(uuid()) @db.Uuid
+  organizationId String                      @db.Uuid
+  scope          MemoryScope
+  scopeId        String                      @db.Uuid
+  kind           String
+  content        String
+  embedding      Unsupported("vector(1536)")?
+  sourceRef      String?
+  confidence     Confidence                  @default(medium)
+  expiresAt      DateTime?
+  createdAt      DateTime                    @default(now())
+
+  @@index([organizationId])
+  @@index([scope, scopeId])
+  @@map("memories")
+}
+
+model KnowledgeBase {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  scope          MemoryScope
+  scopeId        String   @db.Uuid
+  name           String
+  description    String?
+  createdAt      DateTime @default(now())
+
+  documents KnowledgeDocument[]
+
+  @@index([organizationId])
+  @@index([scope, scopeId])
+  @@map("knowledge_bases")
+}
+
+model KnowledgeDocument {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @db.Uuid
+  knowledgeBaseId String   @db.Uuid
+  fileId          String?  @db.Uuid
+  title           String
+  source          String   @default("upload")
+  status          String   @default("pending")
+  meta            Json     @default("{}")
+  createdAt       DateTime @default(now())
+
+  knowledgeBase KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  embeddings    Embedding[]
+
+  @@index([organizationId])
+  @@index([knowledgeBaseId])
+  @@map("knowledge_documents")
+}
+
+model Embedding {
+  id                  String                      @id @default(uuid()) @db.Uuid
+  organizationId      String                      @db.Uuid
+  knowledgeDocumentId String                      @db.Uuid
+  chunkIndex          Int
+  content             String
+  embedding           Unsupported("vector(1536)")?
+  tokens              Int                         @default(0)
+  meta                Json                        @default("{}")
+
+  document KnowledgeDocument @relation(fields: [knowledgeDocumentId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([knowledgeDocumentId])
+  @@map("embeddings")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Billing & Usage
+// ─────────────────────────────────────────────────────────────────────────
+
+model Plan {
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String
+  priceMonth Float    @default(0)
+  limits     Json     @default("{}")
+  features   Json     @default("[]")
+  isPublic   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id                   String             @id @default(uuid()) @db.Uuid
+  organizationId       String             @db.Uuid
+  planId               String             @db.Uuid
+  stripeSubscriptionId String?
+  status               SubscriptionStatus @default(trialing)
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  seats                Int                @default(1)
+  createdAt            DateTime           @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan         Plan         @relation(fields: [planId], references: [id])
+
+  @@index([organizationId])
+  @@map("subscriptions")
+}
+
+model UsageRecord {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  period         DateTime @db.Date
+  metric         String
+  value          Float    @default(0)
+  breakdown      Json     @default("{}")
+
+  @@unique([organizationId, period, metric])
+  @@index([organizationId])
+  @@map("usage_records")
+}
+
+model Invoice {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  stripeInvoiceId String?
+  amount         Float    @default(0)
+  currency       String   @default("usd")
+  status         String   @default("draft")
+  periodStart    DateTime?
+  periodEnd      DateTime?
+  pdfUrl         String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@map("invoices")
+}
+
+model AIPriceBook {
+  id                String    @id @default(uuid()) @db.Uuid
+  provider          AIProvider
+  model             String
+  inputPricePer1k   Float
+  outputPricePer1k  Float
+  currency          String    @default("usd")
+  effectiveFrom     DateTime  @default(now())
+  effectiveTo       DateTime?
+
+  @@index([provider, model])
+  @@map("ai_price_book")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Platform
+// ─────────────────────────────────────────────────────────────────────────
+
+model Setting {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String?  @db.Uuid
+  namespace      String
+  key            String
+  value          Json     @default("{}")
+  updatedBy      String?  @db.Uuid
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, namespace, key])
+  @@index([organizationId])
+  @@map("settings")
+}
+
+model Notification {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  userId         String    @db.Uuid
+  type           String
+  title          String
+  body           String?
+  data           Json      @default("{}")
+  readAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([organizationId])
+  @@index([userId])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id            String   @id @default(uuid()) @db.Uuid
+  organizationId String  @db.Uuid
+  actorUserId   String?  @db.Uuid
+  action        String
+  subjectType   String?
+  subjectId     String?  @db.Uuid
+  before        Json     @default("{}")
+  after         Json     @default("{}")
+  ip            String?
+  traceId       String?
+  createdAt     DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@map("audit_logs")
+}
+
+model Log {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String?  @db.Uuid
+  level          String
+  module         String?
+  message        String
+  context        Json     @default("{}")
+  traceId        String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@map("logs")
+}
+
+model Report {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  projectId      String?  @db.Uuid
+  kind           String
+  params         Json     @default("{}")
+  status         String   @default("queued")
+  fileId         String?  @db.Uuid
+  summary        Json     @default("{}")
+  createdBy      String?  @db.Uuid
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@map("reports")
+}
