@@ -72,7 +72,7 @@ export async function produceInline(
  * a plain object. If the agent (or stub) returns non-JSON text, wraps it in
  * `{ text }` so callers always get an object. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function runAgent(key: AgentKey, input: any): Promise<any> {
+export async function runAgent(key: AgentKey, input: any, context?: Record<string, unknown>): Promise<any> {
   const runner = await makeRunner();
   const def = await resolveAgent(key);
   const req: AgentRequest = {
@@ -80,7 +80,7 @@ export async function runAgent(key: AgentKey, input: any): Promise<any> {
     step: "run",
     agentKey: key,
     agentVersion: def.version,
-    context: { retrieved: [], memories: [], previousSteps: {} },
+    context: { retrieved: [], memories: [], previousSteps: {}, ...(context ?? {}) },
     input,
     constraints: { model: "auto", locale: "pt-BR" },
   };

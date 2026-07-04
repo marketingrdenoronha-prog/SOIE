@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "@/server/auth";
 import { ok, handle } from "@/server/http";
 import { runAgent } from "@/server/ai-runtime";
+import { assembleProjectContext } from "@/server/project-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,9 +43,18 @@ export async function POST(req: Request) {
     });
     if (!brand) throw new Error("Marca não encontrada");
 
+    // Voice extraction benefits from the audience/market already mapped: pull
+    // context from the brand's most recent project, when there is one.
+    const recentProject = await prisma.project.findFirst({
+      where: { organizationId: org, brandId: input.brandId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
+    const context = recentProject ? await assembleProjectContext(org, recentProject.id) : {};
+
     const result = await runAgent("language", {
       brand: brand.name, positioning: brand.positioning, samples: input.samples,
-    });
+    }, context);
 
     const voice = await prisma.brandVoice.create({
       data: {

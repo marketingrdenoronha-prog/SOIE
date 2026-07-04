@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "@/server/auth";
 import { ok, handle } from "@/server/http";
 import { runAgent } from "@/server/ai-runtime";
+import { assembleProjectContext } from "@/server/project-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,12 +38,13 @@ export async function POST(req: Request) {
     });
     if (!project) throw new Error("Projeto não encontrado");
 
+    const context = await assembleProjectContext(org, input.projectId);
     const result = await runAgent("persona", {
       brand: project.brand.name,
       positioning: project.brand.positioning,
       goal: project.goal,
       brief: input.brief,
-    });
+    }, context);
 
     const persona = await prisma.persona.create({
       data: {
