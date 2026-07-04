@@ -15,7 +15,9 @@ const EnvSchema = z.object({
   APP_URL: z.string().url().default("http://localhost:3000"),
   API_URL: z.string().url().default("http://localhost:3333"),
 
-  DATABASE_URL: z.string().min(1),
+  // Optional so the app can be built without a DB reachable (CI / Vercel first
+  // deploy). At request time, Prisma raises a clear error if the URL is empty.
+  DATABASE_URL: z.string().default(""),
   // Optional: when unset (e.g. serverless on Vercel), jobs run inline instead
   // of via BullMQ/Redis. Set it to enable the queue + worker.
   REDIS_URL: z.string().optional(),
