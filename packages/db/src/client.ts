@@ -25,10 +25,10 @@ function makeClient(): PrismaClient {
     // Lazy require so bundlers on non-Neon targets don't pull the driver.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { PrismaNeon } = require("@prisma/adapter-neon");
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { Pool } = require("@neondatabase/serverless");
-    const pool = new Pool({ connectionString: url });
-    const adapter = new PrismaNeon(pool);
+    // v6 aceita connectionString direto — o adapter cuida do pool/WebSocket
+    // internamente. Passar Pool manualmente quebrava no runtime da Vercel
+    // com "WebSocket constructor not found".
+    const adapter = new PrismaNeon({ connectionString: url });
     return new PrismaClient({ adapter, log: ["error"] });
   }
 
