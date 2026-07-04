@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "@/server/auth";
 import { ok, handle } from "@/server/http";
 import { runAgent } from "@/server/ai-runtime";
+import { assembleProjectContext } from "@/server/project-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,9 +57,10 @@ export async function POST(req: Request) {
     // research stuck on "running" forever — record it as "failed" with the
     // error message so the UI can surface it and the user can retry.
     try {
+      const context = await assembleProjectContext(org, input.projectId);
       const [market, competition] = await Promise.all([
-        runAgent("market", { brand: project.brand.name, positioning: project.brand.positioning, brief: input.brief }),
-        runAgent("competition", { brand: project.brand.name, positioning: project.brand.positioning, brief: input.brief }),
+        runAgent("market", { brand: project.brand.name, positioning: project.brand.positioning, brief: input.brief }, context),
+        runAgent("competition", { brand: project.brand.name, positioning: project.brand.positioning, brief: input.brief }, context),
       ]);
 
       await Promise.all([

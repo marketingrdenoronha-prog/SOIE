@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "@/server/auth";
 import { ok, handle } from "@/server/http";
 import { runAgent } from "@/server/ai-runtime";
+import { assembleProjectContext } from "@/server/project-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,13 +41,16 @@ export async function POST(req: Request) {
     });
     if (!project) throw new Error("Projeto não encontrado");
 
+    // Editorial line synthesizes everything already gathered (Constitution:
+    // strategy comes after understanding), so it gets the full project context.
+    const context = await assembleProjectContext(org, input.projectId);
     const result = await runAgent("planning", {
       brand: project.brand.name,
       positioning: project.brand.positioning,
       objectives: project.brand.objectives,
       personas: project.personas.map((p) => ({ name: p.name, pains: p.pains.map((x) => x.description) })),
       brief: input.brief,
-    });
+    }, context);
 
     const strategy = await prisma.editorialStrategy.create({
       data: {

@@ -23,6 +23,8 @@ const body = z
     channel: Channel,
     type: DeliverableType,
     brief: z.string().max(2000).optional(),
+    /** Theme dropped from an editorial line — anchors the roteiro. */
+    theme: z.string().max(300).optional(),
   })
   .refine((v) => Boolean(v.projectId) || Boolean(v.clientName), {
     message: "Informe um projeto existente (projectId) ou um nome de cliente (clientName).",
@@ -71,8 +73,8 @@ export async function POST(req: Request) {
         projectId,
         channel: input.channel,
         type: input.type,
-        title: format.label(input.channel),
-        brief: input.brief,
+        title: input.theme ? `${format.label(input.channel)} · ${input.theme}` : format.label(input.channel),
+        brief: input.theme ?? input.brief,
         status: "generating",
         createdBy: sub,
       },
@@ -80,7 +82,7 @@ export async function POST(req: Request) {
 
     let produced;
     try {
-      produced = await produceInline(deliverable.id, input.type, input.channel, input.brief, context);
+      produced = await produceInline(deliverable.id, input.type, input.channel, input.brief, context, input.theme);
     } catch (err) {
       // Don't leave the deliverable stuck on "generating" if generation fails.
       await prisma.deliverable.update({

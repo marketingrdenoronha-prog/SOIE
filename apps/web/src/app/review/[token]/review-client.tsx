@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { SpecView } from "@/components/spec-view";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 interface ReviewData {
   token: string;
@@ -108,7 +109,9 @@ export function ReviewClient({ token }: { token: string }) {
         </p>
 
         <div className="mt-6 rounded-2xl border border-border bg-elevated p-5">
-          <SpecView type={data.deliverable.type} spec={data.deliverable.spec} />
+          <ErrorBoundary>
+            <SpecView type={data.deliverable.type} spec={data.deliverable.spec} />
+          </ErrorBoundary>
         </div>
 
         {data.history.length > 0 && (

@@ -13,6 +13,8 @@ export interface ProduceParams {
   type: DeliverableType;
   channel: Channel;
   brief?: string;
+  /** Theme/topic this piece develops, e.g. dropped from an editorial line. */
+  theme?: string;
   /** Business/brand/audience context assembled by the caller (Phase 8.6). */
   context?: Record<string, unknown>;
   runner: AgentRunner;
@@ -63,8 +65,12 @@ export async function produceDeliverable(p: ProduceParams): Promise<ProducedDeli
   const produced = await run(
     format.agent,
     "produce",
-    { type: p.type, channel: p.channel, brief: p.brief },
-    format.instruction,
+    { type: p.type, channel: p.channel, brief: p.brief, theme: p.theme },
+    // Ask for the theme back so the roteiro is anchored to it (the editorial
+    // line "drop": Tema + Formato + Copy).
+    p.theme
+      ? `${format.instruction}\n\nO tema/assunto desta peça é: "${p.theme}". Inclua no JSON uma chave "theme" com esse tema e desenvolva o conteúdo em torno dele.`
+      : format.instruction,
   );
 
   const evaluated = await run("evaluator", "evaluate", produced.output);

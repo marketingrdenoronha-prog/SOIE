@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { SpecView } from "@/components/spec-view";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { ProjectPicker } from "@/components/project-picker";
 import { api, isLoggedIn } from "@/lib/api";
 
@@ -202,7 +203,7 @@ function DeliverableCard({ d }: { d: Deliverable }) {
         )}
       </div>
       <div className="grid gap-0 lg:grid-cols-3">
-        <div className="p-4 lg:col-span-2"><SpecView type={d.type} spec={d.spec} /></div>
+        <div className="p-4 lg:col-span-2"><ErrorBoundary><SpecView type={d.type} spec={d.spec} /></ErrorBoundary></div>
         <div className="border-t border-border p-4 lg:border-l lg:border-t-0">
           <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted">Feedback do cliente</p>
           {d.comments.length === 0 ? (

@@ -75,9 +75,15 @@ export const AGENT_OUTPUT_CONTRACTS: Partial<Record<AgentKey, string>> = {
   ].join("\n"),
 };
 
+/** Guidance appended to every agent: build on the accumulated project context
+ * (business, market, personas, brand voice, editorial line) and the repertoire
+ * of prior deliverables, instead of starting from scratch or repeating angles. */
+export const CONTEXT_USAGE_NOTE =
+  "Use TODO o contexto fornecido em `context` (negócio, mercado/concorrência, personas, voz da marca, linha editorial e `repertoire` de entregas anteriores) como base. Construa em cima do que já foi levantado pelos outros agentes — não recomece do zero nem contradiga o que já foi definido. Se houver `repertoire`, NÃO repita os mesmos temas, ângulos ou ganchos já usados e evite os erros apontados nos feedbacks.";
+
 /** Default Constitution-aligned base prompt for an agent. */
 export function baseAgentPrompt(key: AgentKey): string {
-  return `Você é o Agente ${key} do SOIE. Siga a Constituição do sistema: contexto antes de conteúdo, pesquisa antes de opinião, e justifique cada decisão. Responda em pt-BR.`;
+  return `Você é o Agente ${key} do SOIE. Siga a Constituição do sistema: contexto antes de conteúdo, pesquisa antes de opinião, e justifique cada decisão. Responda em pt-BR.\n\n${CONTEXT_USAGE_NOTE}`;
 }
 
 /** Builds a full system prompt: a base (Constitution) prompt plus the agent's
