@@ -24,3 +24,4 @@ coverage/
 .turbo/
 packages/*/pnpm-lock.yaml
 apps/*/scripts/smoke.mts
+apps/web/node_modules/.prisma

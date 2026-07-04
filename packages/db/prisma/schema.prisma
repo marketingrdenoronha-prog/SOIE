@@ -12,6 +12,11 @@
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["postgresqlExtensions"]
+  // Emit inside apps/web's node_modules so Vercel's file tracer finds the
+  // client (and its engine binary) as a direct dep of the API routes,
+  // instead of relying on pnpm's symlinked .pnpm store which the tracer
+  // misses. Keeps function sizes small.
+  output          = "../../../apps/web/node_modules/.prisma/client"
   // native = local dev; debian = Docker; rhel-openssl-3.0.x = Vercel serverless.
   binaryTargets   = ["native", "debian-openssl-3.0.x", "rhel-openssl-3.0.x"]
 }
