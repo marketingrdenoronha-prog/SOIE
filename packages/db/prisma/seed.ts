@@ -86,7 +86,7 @@ async function main() {
   const prices = [
     { provider: "openai", model: "gpt-4o", inputPricePer1k: 0.005, outputPricePer1k: 0.015 },
     { provider: "openai", model: "gpt-4o-mini", inputPricePer1k: 0.00015, outputPricePer1k: 0.0006 },
-    { provider: "anthropic", model: "claude-sonnet", inputPricePer1k: 0.003, outputPricePer1k: 0.015 },
+    { provider: "anthropic", model: "claude-sonnet-5", inputPricePer1k: 0.003, outputPricePer1k: 0.015 },
     { provider: "gemini", model: "gemini-1.5-pro", inputPricePer1k: 0.00125, outputPricePer1k: 0.005 },
     { provider: "deepseek", model: "deepseek-chat", inputPricePer1k: 0.00027, outputPricePer1k: 0.0011 },
   ] as const;

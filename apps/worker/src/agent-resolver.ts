@@ -19,8 +19,10 @@ export async function resolveAgent(key: AgentKey): Promise<AgentDefinition> {
     systemPrompt:
       (version?.modelPolicy as any)?.systemPrompt ??
       `Você é o Agente ${key} do SOIE. Siga a Constituição do sistema: contexto antes de conteúdo, pesquisa antes de opinião, e justifique cada decisão. Responda em pt-BR.`,
+    // Model IDs used against each provider's real API. Configurable per agent
+    // version later; these are sensible defaults with cross-provider fallback.
     modelPolicy: {
-      preferred: { provider: "anthropic", model: "claude-sonnet" },
+      preferred: { provider: "anthropic", model: "claude-sonnet-5" },
       fallback: [
         { provider: "openai", model: "gpt-4o" },
         { provider: "gemini", model: "gemini-1.5-pro" },
