@@ -18,6 +18,7 @@ export const NAV: NavItem[] = [
   { label: "Biblioteca", href: "/library", group: "Inteligência", icon: "▤" },
   { label: "Agentes & Execuções", href: "/ai", group: "IA", icon: "✦" },
   { label: "Relatórios", href: "/reports", group: "IA", icon: "◭" },
+  { label: "Importar base", href: "/import", group: "Admin", icon: "⇪" },
   { label: "Configurações", href: "/settings", group: "Admin", icon: "⚙" },
 ];
 
