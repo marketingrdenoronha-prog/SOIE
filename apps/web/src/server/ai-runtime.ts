@@ -63,9 +63,10 @@ export async function produceInline(
   channel: Channel,
   brief?: string,
   context?: Record<string, unknown>,
+  theme?: string,
 ): Promise<ProducedDeliverable> {
   const runner = await makeRunner();
-  return produceDeliverable({ runId, type, channel, brief, context, runner, resolveAgent });
+  return produceDeliverable({ runId, type, channel, brief, theme, context, runner, resolveAgent });
 }
 
 /** Runs one agent with an arbitrary JSON input and returns its parsed output as
