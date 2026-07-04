@@ -6,7 +6,8 @@ ENV PATH=$PNPM_HOME:$PATH
 RUN corepack enable
 WORKDIR /app
 
-# ---- deps: install with the full workspace manifest set ----
+# ---- deps: copy ALL workspace manifests so --frozen-lockfile matches the
+#      lockfile exactly, then install once (cached until a manifest changes) ----
 FROM base AS deps
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY packages/config/package.json packages/config/
@@ -15,13 +16,16 @@ COPY packages/db/package.json packages/db/
 COPY packages/ai/package.json packages/ai/
 COPY packages/queue/package.json packages/queue/
 COPY apps/api/package.json apps/api/
+COPY apps/worker/package.json apps/worker/
+COPY apps/web/package.json apps/web/
 RUN pnpm install --frozen-lockfile
 
-# ---- build ----
+# ---- build: generate Prisma client, then build the API and its workspace
+#      deps in dependency order (turbo resolves the graph) ----
 FROM deps AS build
 COPY . .
 RUN pnpm --filter @soie/db generate \
- && pnpm --filter @soie/api build
+ && pnpm exec turbo run build --filter=@soie/api...
 
 # ---- runtime ----
 FROM base AS runtime

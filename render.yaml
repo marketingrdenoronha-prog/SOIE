@@ -23,6 +23,9 @@ services:
     dockerContext: .
     plan: starter
     healthCheckPath: /api/v1/health
+    # Runs before each deploy goes live: applies migrations, RLS policies and
+    # seeds system data. All three are idempotent, so re-deploys are safe.
+    preDeployCommand: "cd /app && pnpm --filter @soie/db migrate:deploy && pnpm --filter @soie/db rls && pnpm --filter @soie/db seed"
     envVars:
       - key: NODE_ENV
         value: production

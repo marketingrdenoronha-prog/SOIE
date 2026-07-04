@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @soie/db generate
+        env:
+          DATABASE_URL: postgresql://user:pass@localhost:5432/db
+
+      - name: Validate Prisma schema
+        run: pnpm --filter @soie/db validate
+        env:
+          DATABASE_URL: postgresql://user:pass@localhost:5432/db
+
+      - name: Typecheck (all packages and apps)
+        run: |
+          for pkg in config contracts ai queue db; do
+            pnpm --filter @soie/$pkg exec tsc -p tsconfig.json --noEmit
+          done
+          pnpm --filter @soie/api exec tsc -p tsconfig.json --noEmit
+          pnpm --filter @soie/worker exec tsc -p tsconfig.json --noEmit
+          pnpm --filter @soie/web exec tsc --noEmit
+
+      - name: Build all (packages then apps, in dependency order)
+        run: pnpm build
+        env:
+          API_URL: http://localhost:3333

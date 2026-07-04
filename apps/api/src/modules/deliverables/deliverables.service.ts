@@ -76,7 +76,7 @@ export class DeliverablesService {
           channel: d.channel,
           type: d.type,
         },
-        { jobId: `deliverable:${d.id}` },
+        { jobId: `deliverable-${d.id}` },
       );
     }
 

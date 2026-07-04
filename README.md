@@ -32,6 +32,14 @@ packages/   config · contracts (Zod) · db (Prisma, todas as entidades) · ai (
 
 Estado: todos os pacotes passam no `typecheck`, o schema Prisma passa no `prisma validate` e o Orchestrator de agentes roda de ponta a ponta (pipeline `research`). Os adapters de IA, workers/filas, RAG ao vivo e billing têm interfaces prontas e ficam para as próximas fases — detalhes na tabela de estado em [`GETTING_STARTED.md`](GETTING_STARTED.md).
 
+### Deploy
+
+Backend (API + worker + Postgres + Redis) no **Render**, frontend na **Vercel**. Passo a passo em [`DEPLOY.md`](DEPLOY.md).
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/marketingrdenoronha-prog/soie)
+
+As migrações, as políticas de RLS e o seed rodam automaticamente a cada deploy (via `preDeployCommand` no `render.yaml`).
+
 ## Parte 1 — Constituição do Sistema
 
 A Constituição é a camada inviolável do sistema. Ela define:

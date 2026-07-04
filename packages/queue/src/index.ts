@@ -4,11 +4,12 @@ import { env } from "@soie/config";
 
 /** The queues of the platform (Architecture Phase 1.9). One per nature of work
  * so IA load scales independently of CRUD. */
+// BullMQ forbids ":" in queue names (it is the Redis key separator), so use "-".
 export const QUEUES = {
-  orchestrate: "ai:orchestrate",
-  agent: "ai:agent",
+  orchestrate: "ai-orchestrate",
+  agent: "ai-agent",
   connector: "connect",
-  embedding: "ai:embed",
+  embedding: "ai-embed",
   export: "export",
   email: "email",
   billing: "billing",

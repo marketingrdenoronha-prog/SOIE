@@ -13,13 +13,15 @@ COPY packages/contracts/package.json packages/contracts/
 COPY packages/db/package.json packages/db/
 COPY packages/ai/package.json packages/ai/
 COPY packages/queue/package.json packages/queue/
+COPY apps/api/package.json apps/api/
 COPY apps/worker/package.json apps/worker/
+COPY apps/web/package.json apps/web/
 RUN pnpm install --frozen-lockfile
 
 FROM deps AS build
 COPY . .
 RUN pnpm --filter @soie/db generate \
- && pnpm --filter @soie/worker build
+ && pnpm exec turbo run build --filter=@soie/worker...
 
 FROM base AS runtime
 ENV NODE_ENV=production
