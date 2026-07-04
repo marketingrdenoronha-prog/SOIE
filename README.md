@@ -14,6 +14,14 @@ O sistema é dividido em partes, cada uma em seu próprio diretório dentro de `
 
 > As partes seguintes (agentes especializados, fluxos de trabalho, protocolos de pesquisa, formatos de entrega etc.) serão adicionadas como novos diretórios `sistema/parte-N-*` conforme forem definidas.
 
+## Plataforma SaaS (arquitetura)
+
+Além do sistema de prompts, o repositório abriga o projeto da **plataforma SaaS SOIE** — o produto que automatiza a inteligência editorial com IA para centenas de clientes simultâneos.
+
+Toda a **engenharia do sistema** (Fases 1 a 8: arquitetura, banco, módulos, agentes, fluxo, UX, backend e subsistema de IA) está documentada em [`arquitetura/`](arquitetura/), produzida **antes de qualquer código de aplicação**.
+
+> **Status:** apenas a documentação de arquitetura está pronta. A implementação (código) começará em fases seguintes, sobre este projeto.
+
 ## Parte 1 — Constituição do Sistema
 
 A Constituição é a camada inviolável do sistema. Ela define:
