@@ -16,9 +16,15 @@ Os Dockerfiles ([`infra/Dockerfile.api`](infra/Dockerfile.api), [`infra/Dockerfi
 
 ## Frontend na Vercel
 
-1. **New Project** apontando para este repositório; a Vercel lê [`vercel.json`](vercel.json) (rootDirectory `apps/web`, build via pnpm no monorepo).
-2. Defina a variável `API_URL` com a URL pública da API no Render (ex.: `https://soie-api.onrender.com`). O `next.config.mjs` faz o rewrite de `/api/*` para lá.
-3. Deploy. A URL da Vercel é o endereço público do SOIE.
+1. **New Project** apontando para este repositório.
+2. Em **Settings → Root Directory**, defina **`apps/web`** (é ajuste de projeto na
+   Vercel, não vai no arquivo). A Vercel então lê [`apps/web/vercel.json`](apps/web/vercel.json),
+   que roda o install e o build a partir da raiz do monorepo.
+3. Em **Settings → Environment Variables**, defina `API_URL` com a URL pública da
+   API no Render (ex.: `https://soie-api.onrender.com`) **antes do build** — o
+   `next.config.mjs` resolve o rewrite de `/api/*` em tempo de build, então mudar
+   `API_URL` depois exige um novo deploy.
+4. Deploy. A URL da Vercel é o endereço público do SOIE.
 
 ## Ordem de subida
 
