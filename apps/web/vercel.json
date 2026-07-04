@@ -2,6 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
-  "buildCommand": "cd ../.. && pnpm --filter @soie/db generate && (if [ -n \"$DATABASE_URL\" ]; then echo '► DATABASE_URL set → running migrate + seed'; pnpm --filter @soie/db migrate:deploy && pnpm --filter @soie/db seed; else echo '► DATABASE_URL not set → skipping migrate/seed (site builds anyway)'; fi) && pnpm exec turbo run build --filter=@soie/web",
+  "buildCommand": "cd ../.. && node scripts/vercel-build.mjs",
   "outputDirectory": ".next"
 }
