@@ -17,22 +17,20 @@ export async function POST(req: Request) {
     const passwordHash = hashPassword(input.password);
     const base = slugify(input.organizationName);
 
-    // Sem transação interativa (Neon HTTP não suporta). A ordem é dessa forma
-    // porque cada passo depende do id do anterior — se falhar no meio, o front
-    // recebe o erro e o usuário pode tentar de novo. Slug é único, então
-    // retry é seguro.
-    const slug = await uniqueSlug(prisma, base);
-    const org = await prisma.organization.create({
-      data: { name: input.organizationName, slug },
-    });
-    const role = await prisma.role.create({
-      data: { organizationId: org.id, name: "owner", isSystem: true, permissions: ["*"] },
-    });
-    const user = await prisma.user.create({
-      data: { email: input.email, name: input.name, passwordHash },
-    });
-    await prisma.membership.create({
-      data: { organizationId: org.id, userId: user.id, roleId: role.id, status: "active" },
+    const { user, org } = await prisma.$transaction(async (tx) => {
+      const org = await tx.organization.create({
+        data: { name: input.organizationName, slug: await uniqueSlug(tx, base) },
+      });
+      const role = await tx.role.create({
+        data: { organizationId: org.id, name: "owner", isSystem: true, permissions: ["*"] },
+      });
+      const user = await tx.user.create({
+        data: { email: input.email, name: input.name, passwordHash },
+      });
+      await tx.membership.create({
+        data: { organizationId: org.id, userId: user.id, roleId: role.id, status: "active" },
+      });
+      return { user, org };
     });
 
     return ok(

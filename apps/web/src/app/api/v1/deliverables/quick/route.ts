@@ -53,17 +53,20 @@ export async function POST(req: Request) {
     const produced = await produceInline(deliverable.id, input.type, input.channel, input.brief);
 
     const token = randomBytes(24).toString("base64url");
-    const updated = await prisma.deliverable.update({
-      where: { id: deliverable.id },
-      data: {
-        spec: produced.spec as object,
-        confidence: produced.confidence,
-        evaluationScore: produced.evaluationScore,
-        status: "client_review",
-      },
-    });
-    await prisma.reviewLink.create({
-      data: { organizationId: org, deliverableId: updated.id, token, createdBy: sub },
+    const updated = await prisma.$transaction(async (tx) => {
+      const d = await tx.deliverable.update({
+        where: { id: deliverable.id },
+        data: {
+          spec: produced.spec as object,
+          confidence: produced.confidence,
+          evaluationScore: produced.evaluationScore,
+          status: "client_review",
+        },
+      });
+      await tx.reviewLink.create({
+        data: { organizationId: org, deliverableId: d.id, token, createdBy: sub },
+      });
+      return d;
     });
 
     return ok({ deliverable: updated, token, reviewUrl: `/review/${token}` }, 201);

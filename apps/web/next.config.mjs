@@ -13,6 +13,11 @@ const nextConfig = {
     "pino",
     "pino-pretty",
   ],
+  // A Vercel roda RHEL: o engine debian (17 MB) nunca é usado lá. Excluí-lo
+  // do trace corta esse peso de cada função serverless.
+  outputFileTracingExcludes: {
+    "*": ["**/libquery_engine-debian-openssl-3.0.x.so.node"],
+  },
   eslint: { ignoreDuringBuilds: true },
 };
 

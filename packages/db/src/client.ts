@@ -4,44 +4,28 @@ import { PrismaClient } from "@prisma/client";
  * Single PrismaClient per process. In dev, cache on globalThis so hot-reload
  * doesn't open a new pool on every reload.
  *
- * On Neon (host contains `neon.tech`), we swap in the Neon serverless driver
- * adapter — Prisma queries flow over Neon's HTTP fetch API instead of the
- * native query engine binary. That frees the deployment from carrying a
- * ~15 MB .so.node in every serverless function, which was blowing past
- * Vercel's 250 MB per-function limit as we grew /api/** routes.
+ * Classic engine over TCP everywhere — Neon speaks normal Postgres protocol,
+ * so no driver adapter is needed. (We tried the Neon serverless adapters to
+ * drop the engine binary from the Vercel bundle; it turned out the engine is
+ * loaded even with an adapter, and the HTTP adapter can't run $transaction.
+ * The real deploy fix was declaring the Prisma deps in apps/web so file
+ * tracing bundles the client + engine into each serverless function.)
  *
- * Everywhere else (local Postgres, Docker, CI) it stays on the classic
- * engine binary — the driver adapter is Neon-specific.
+ * On Vercel + Neon, prefer the pooled connection string (host with `-pooler`)
+ * to avoid exhausting direct connections across many lambdas.
  */
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-function makeClient(): PrismaClient {
-  const url = process.env.DATABASE_URL ?? "";
-  const isNeon = /\bneon\.tech\b/.test(url);
-
-  if (isNeon) {
-    // Lazy require so bundlers on non-Neon targets don't pull the driver.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { PrismaNeonHTTP } = require("@prisma/adapter-neon");
-    // HTTP-only: stateless, uma request HTTP por query. Zero WebSocket, zero
-    // pool para configurar — funciona sem ajustes no runtime da Vercel. O
-    // trade-off é que $transaction interativo não é suportado; usamos a
-    // forma sequencial nas rotas afetadas.
-    const adapter = new PrismaNeonHTTP(url);
-    return new PrismaClient({ adapter, log: ["error"] });
-  }
-
-  return new PrismaClient({
+export const prisma: PrismaClient =
+  globalForPrisma.prisma ??
+  new PrismaClient({
     log:
       process.env.NODE_ENV === "development"
         ? ["warn", "error"]
         : ["error"],
   });
-}
-
-export const prisma: PrismaClient = globalForPrisma.prisma ?? makeClient();
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;

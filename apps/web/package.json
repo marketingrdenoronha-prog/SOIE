@@ -10,12 +10,15 @@
     "lint": "echo 'no lint'"
   },
   "dependencies": {
+    "@prisma/client": "^6.2.1",
     "@soie/ai": "workspace:*",
     "@soie/config": "workspace:*",
     "@soie/contracts": "workspace:*",
     "@soie/db": "workspace:*",
     "jsonwebtoken": "^9.0.2",
     "next": "^15.1.4",
+    "pino": "^9.6.0",
+    "pino-pretty": "^13.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "zod": "^3.24.1"
@@ -27,6 +30,7 @@
     "@types/react-dom": "^19.0.3",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.5.1",
+    "prisma": "^6.2.1",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3"
   }
