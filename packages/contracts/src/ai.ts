@@ -15,6 +15,10 @@ export const AgentKey = z.enum([
   "evaluator",
   "critic",
   "planning",
+  "scriptwriter", // roteiros de vídeo (reel, tiktok, youtube, ads)
+  "designer", // briefings de design (estático, carrossel, thumbnail)
+  "motion", // roteiros de motion design
+  "ads", // criativos e copy de anúncios
 ]);
 export type AgentKey = z.infer<typeof AgentKey>;
 

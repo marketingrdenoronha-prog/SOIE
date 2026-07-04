@@ -129,6 +129,22 @@ enum SubscriptionStatus {
   canceled
 }
 
+enum DeliverableStatus {
+  queued
+  generating
+  draft
+  internal_review
+  client_review
+  approved
+  changes_requested
+  delivered
+}
+
+enum ReviewDecision {
+  approve
+  request_changes
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Identity & Access
 // ─────────────────────────────────────────────────────────────────────────
@@ -307,6 +323,7 @@ model Project {
   contents           Content[]
   contentIdeas       ContentIdea[]
   orchestrationRuns  OrchestrationRun[]
+  deliverables       Deliverable[]
 
   @@index([organizationId])
   @@index([brandId])
@@ -848,6 +865,82 @@ model Approval {
   @@index([organizationId])
   @@index([subjectType, subjectId])
   @@map("approvals")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Deliverables & Client Review
+// ─────────────────────────────────────────────────────────────────────────
+
+/// A channel/format-specific production unit (roteiro de vídeo, motion,
+/// briefing de design, carrossel, copy, artigo, e-mail, ad). `spec` holds the
+/// structured script validated by the matching schema in @soie/contracts.
+model Deliverable {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @db.Uuid
+  projectId      String            @db.Uuid
+  contentId      String?           @db.Uuid
+  channel        String
+  type           String
+  title          String
+  brief          String?
+  spec           Json              @default("{}")
+  status         DeliverableStatus @default(queued)
+  version        Int               @default(1)
+  confidence     Confidence?
+  evaluationScore Int?
+  orchestrationRunId String?       @db.Uuid
+  createdBy      String?           @db.Uuid
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  reviewLinks ReviewLink[]
+  comments    ReviewComment[]
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([status])
+  @@map("deliverables")
+}
+
+/// Open, tokenized link shared with the client to review a deliverable. No
+/// auth: possession of the token grants review access. Revocable and optionally
+/// expiring.
+model ReviewLink {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  deliverableId  String    @db.Uuid
+  token          String    @unique
+  status         String    @default("open") // open | decided | revoked
+  createdBy      String?   @db.Uuid
+  expiresAt      DateTime?
+  lastViewedAt   DateTime?
+  createdAt      DateTime  @default(now())
+
+  deliverable Deliverable @relation(fields: [deliverableId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([deliverableId])
+  @@map("review_links")
+}
+
+/// A client's decision + optional comment on a deliverable, captured from the
+/// public review link. Surfaces inside the org as feedback/notification.
+model ReviewComment {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @db.Uuid
+  deliverableId  String         @db.Uuid
+  reviewLinkId   String?        @db.Uuid
+  decision       ReviewDecision
+  comment        String?
+  authorName     String?
+  createdAt      DateTime       @default(now())
+
+  deliverable Deliverable @relation(fields: [deliverableId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([deliverableId])
+  @@map("review_comments")
 }
 
 // ─────────────────────────────────────────────────────────────────────────

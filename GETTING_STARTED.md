@@ -79,8 +79,20 @@ cd apps/api && node <caminho-do-tsx> scripts/smoke.mts
 | `apps/web` — app shell (sidebar, topbar, dark mode), dashboard, IA | ✅ typecheck limpo |
 | RLS — `prisma/sql/rls.sql` + `pnpm --filter @soie/db rls` | ✅ script pronto |
 | Deploy — Dockerfiles, `render.yaml`, `vercel.json` (ver `DEPLOY.md`) | ✅ pronto |
+| Entregas por canal/formato (roteiro vídeo/motion/design/carrossel/copy/artigo/e-mail/ads) | ✅ produção E2E OK |
+| Link aberto de revisão do cliente (OK / Ajuste + comentário) → feedback na org | ✅ público + notificação |
 | Conectores externos, RAG/embeddings ao vivo, WebSocket de progresso | ⏳ próximos |
 | Billing Stripe, prompt/agent versioning na UI | ⏳ próximos |
+
+### Ciclo de entregas ao cliente
+
+1. `POST /api/v1/deliverables/request` com `{ projectId, items:[{channel,type,brief}] }`
+   cria uma entrega por item e enfileira a produção. O worker preenche o roteiro
+   (produzir → avaliar → criticar) e move para `internal_review`.
+2. `POST /api/v1/deliverables/:id/review-link` gera um **link aberto** `/review/:token`.
+3. O cliente abre o link (sem login), vê o roteiro e clica **Aprovar** ou
+   **Solicitar ajuste** (abre tela de comentário). A decisão cria um
+   `ReviewComment` + `Notification` que **aparecem dentro da organização**.
 
 Os pontos ⏳ têm as interfaces e contratos já definidos — falta a fiação com os serviços externos.
 

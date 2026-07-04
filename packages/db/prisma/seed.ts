@@ -43,6 +43,10 @@ async function main() {
     { key: "evaluator", name: "Agente Avaliador", description: "Pontua qualidade e aderência (rubrica)." },
     { key: "critic", name: "Agente Crítico", description: "Autocrítica adversarial (Constituição §9)." },
     { key: "planning", name: "Agente Planejamento", description: "Sintetiza estratégia e linha editorial." },
+    { key: "scriptwriter", name: "Agente Roteirista", description: "Escreve roteiros de vídeo (reels, tiktok, youtube, ads)." },
+    { key: "designer", name: "Agente Designer", description: "Cria briefings de design (estático, carrossel, thumbnail)." },
+    { key: "motion", name: "Agente Motion", description: "Escreve roteiros de motion design (cenas e timing)." },
+    { key: "ads", name: "Agente Ads", description: "Produz criativos e copy de anúncios." },
   ];
   for (const a of agents) {
     await prisma.agent.upsert({

@@ -4,6 +4,10 @@ import {
   processOrchestration,
   type OrchestrationJob,
 } from "./processors/orchestration.processor.js";
+import {
+  processDeliverable,
+  type DeliverableJob,
+} from "./processors/deliverable.processor.js";
 
 /**
  * Worker entrypoint. Registers one processor per queue; scales horizontally by
@@ -13,6 +17,7 @@ import {
 async function main(): Promise<void> {
   const workers = [
     registerWorker<OrchestrationJob>(QUEUES.orchestrate, processOrchestration, 4),
+    registerWorker<DeliverableJob>(QUEUES.agent, processDeliverable, 6),
   ];
 
   for (const w of workers) {

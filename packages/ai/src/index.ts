@@ -23,3 +23,13 @@ export {
   type OrchestratorDeps,
 } from "./orchestrator/orchestrator.js";
 export { PIPELINES, type PipelineStep } from "./orchestrator/pipelines.js";
+export {
+  FORMAT_CATALOG,
+  CHANNEL_DEFAULTS,
+  type FormatSpec,
+} from "./deliverables/catalog.js";
+export {
+  produceDeliverable,
+  type ProduceParams,
+  type ProducedDeliverable,
+} from "./deliverables/producer.js";
