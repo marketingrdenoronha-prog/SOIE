@@ -664,7 +664,13 @@ model EditorialStrategy {
   objectives     Json       @default("{}")
   rationale      String?
   confidence     Confidence @default(medium)
+  // status: draft | in_review | approved | changes_requested
   status         String     @default("draft")
+  // Client approval flow (Phase A): opaque token for the public review link.
+  reviewToken    String?    @unique
+  approvedAt     DateTime?
+  clientComment  String?
+  reviewedBy     String?
   createdAt      DateTime   @default(now())
 
   project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
