@@ -79,7 +79,7 @@ export const AGENT_OUTPUT_CONTRACTS: Partial<Record<AgentKey, string>> = {
  * (business, market, personas, brand voice, editorial line) and the repertoire
  * of prior deliverables, instead of starting from scratch or repeating angles. */
 export const CONTEXT_USAGE_NOTE =
-  "Use TODO o contexto fornecido em `context` (negócio, mercado/concorrência, personas, voz da marca, linha editorial, `memory` e `repertoire` de entregas anteriores) como base. Se houver `context.memory`, trate suas entradas como REGRAS OBRIGATÓRIAS de linguagem, tom e linha editorial — nunca as contrarie. Construa em cima do que já foi levantado pelos outros agentes — não recomece do zero nem contradiga o que já foi definido. Se houver `repertoire`, NÃO repita os mesmos temas, ângulos ou ganchos já usados e evite os erros apontados nos feedbacks.";
+  "Use TODO o contexto fornecido em `context` (negócio, mercado/concorrência, personas, voz da marca, linha editorial, `framework`, `memory`, `editorialHistory` e `repertoire` de entregas anteriores) como base. Se houver `context.framework`, ele é o MÉTODO do usuário: baseie CADA copy, roteiro e linha editorial nele — tem prioridade sobre estilos genéricos. Se houver `context.memory`, trate suas entradas como REGRAS OBRIGATÓRIAS de linguagem, tom e linha editorial — nunca as contrarie. Se houver `context.editorialHistory`, evolua a partir das linhas editoriais anteriores em vez de recomeçar. Construa em cima do que já foi levantado pelos outros agentes. Se houver `repertoire`, NÃO repita os mesmos temas, ângulos ou ganchos já usados e evite os erros apontados nos feedbacks.";
 
 /** Default Constitution-aligned base prompt for an agent. */
 export function baseAgentPrompt(key: AgentKey): string {

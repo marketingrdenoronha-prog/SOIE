@@ -85,11 +85,24 @@ export async function assembleProjectContext(
     },
   };
 
-  if (memories.length > 0) {
+  // The framework ("como penso pra fazer") is the copy foundation: split it out
+  // so it can be elevated in the prompt, above the rest of the memory.
+  const frameworkEntries = memories.filter((m) => m.kind === "framework");
+  const otherMemories = memories.filter((m) => m.kind !== "framework");
+
+  if (frameworkEntries.length > 0) {
+    context.framework = {
+      note:
+        "Framework do usuário — o método/raciocínio que guia TODA a produção. Baseie CADA copy, roteiro e linha editorial neste framework; ele tem prioridade sobre estilos genéricos.",
+      content: frameworkEntries.map((m) => m.content),
+    };
+  }
+
+  if (otherMemories.length > 0) {
     context.memory = {
       note:
         "Memória curada pelo usuário. Trate como REGRAS OBRIGATÓRIAS: respeite estas diretrizes de linguagem, tom e linha editorial em tudo que gerar.",
-      entries: memories.map((m) => ({ kind: m.kind, content: m.content, scope: m.scope })),
+      entries: otherMemories.map((m) => ({ kind: m.kind, content: m.content, scope: m.scope })),
     };
   }
 
@@ -147,17 +160,38 @@ export async function assembleProjectContext(
     };
   }
 
-  // Repertoire: what was already produced for this client + the feedback it
-  // got. Feeding this back lets the model avoid repeating angles/hooks and
-  // steer clear of mistakes the client already flagged.
+  // Editorial-line HISTORY: past strategies so a new line evolves from what came
+  // before (and doesn't reset the direction on every generation).
+  const pastStrategies = await prisma.editorialStrategy.findMany({
+    where: { organizationId, projectId, ...(strategy ? { id: { not: strategy.id } } : {}) },
+    orderBy: { createdAt: "desc" },
+    take: 5,
+    include: { editorialLines: true },
+  });
+  if (pastStrategies.length > 0) {
+    context.editorialHistory = {
+      note:
+        "Linhas editoriais anteriores deste projeto. Evolua a partir delas: mantenha o que funcionou, evite repetir e refine — não recomece do zero.",
+      strategies: pastStrategies.map((s) => ({
+        date: s.createdAt,
+        positioning: s.positioning,
+        pillars: s.pillars,
+        lines: s.editorialLines.map((l) => l.name),
+      })),
+    };
+  }
+
+  // Repertoire: what was already produced for this CLIENT (across all their
+  // projects) + the feedback it got. Feeding this back lets the model avoid
+  // repeating angles/hooks and steer clear of mistakes the client flagged.
   const priorDeliverables = await prisma.deliverable.findMany({
     where: {
       organizationId,
-      projectId,
+      project: { brand: { clientId: brand.clientId } },
       status: { in: ["client_review", "approved", "changes_requested", "delivered"] },
     },
     orderBy: { createdAt: "desc" },
-    take: 12,
+    take: 15,
     include: {
       comments: {
         where: { decision: "request_changes" },
