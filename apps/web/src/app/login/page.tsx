@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, setToken } from "@/lib/api";
+import { Logo } from "@/components/logo";
 import "../globals.css";
 
 interface Tokens { accessToken: string }
@@ -40,9 +41,8 @@ export default function LoginPage() {
   return (
     <div className="grid min-h-screen place-items-center bg-surface p-4">
       <div className="w-full max-w-sm rounded-2xl border border-border bg-elevated p-7">
-        <div className="mb-6 flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand text-sm font-bold text-white">S</span>
-          <span className="font-semibold tracking-tight">SOIE</span>
+        <div className="mb-6 flex items-center">
+          <Logo className="h-9 w-auto" />
         </div>
         <h1 className="text-lg font-semibold">
           {mode === "register" ? "Criar conta" : "Entrar"}
