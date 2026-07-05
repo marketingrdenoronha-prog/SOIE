@@ -13,6 +13,7 @@ interface Deliverable {
   channel: string;
   type: string;
   status: string;
+  version?: number;
   spec: unknown;
   comments: { decision: string; comment: string | null; authorName: string | null }[];
   reviewLinks: { token: string }[];
@@ -168,39 +169,70 @@ export function DeliverablesClient() {
         <p className="text-sm text-muted">Nenhuma entrega ainda. Gere a primeira acima.</p>
       ) : (
         <div className="space-y-4">
-          {items.map((d) => <DeliverableCard key={d.id} d={d} />)}
+          {items.map((d) => <DeliverableCard key={d.id} d={d} onChange={refresh} />)}
         </div>
       )}
     </div>
   );
 }
 
-function DeliverableCard({ d }: { d: Deliverable }) {
+function DeliverableCard({ d, onChange }: { d: Deliverable; onChange: () => void }) {
   const token = d.reviewLinks[0]?.token;
   const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState<null | "approve" | "regen">(null);
+  const [err, setErr] = useState<string | null>(null);
   const reviewUrl = token && typeof window !== "undefined" ? `${window.location.origin}/review/${token}` : null;
+
+  const needsInternal = d.status === "internal_review" || d.status === "draft";
+  const changesRequested = d.status === "changes_requested";
+
+  async function approve() {
+    setBusy("approve"); setErr(null);
+    try { await api(`/deliverables/${d.id}/approve`, { method: "POST" }); onChange(); }
+    catch (e) { setErr(e instanceof Error ? e.message : "Erro"); } finally { setBusy(null); }
+  }
+  async function regenerate() {
+    setBusy("regen"); setErr(null);
+    try { await api(`/deliverables/${d.id}/regenerate`, { method: "POST" }); onChange(); }
+    catch (e) { setErr(e instanceof Error ? e.message : "Erro"); } finally { setBusy(null); }
+  }
 
   return (
     <div className="rounded-xl border border-border bg-elevated">
       <div className="flex flex-wrap items-center gap-3 border-b border-border p-4">
         <div>
-          <p className="font-semibold">{d.title}</p>
+          <p className="font-semibold">{d.title}{d.version && d.version > 1 ? <span className="ml-2 text-xs text-muted">v{d.version}</span> : null}</p>
           <p className="text-xs text-muted">{d.channel} · {d.type}</p>
         </div>
         <StatusBadge status={d.status} />
-        {reviewUrl && (
-          <div className="ml-auto flex items-center gap-2">
-            <a href={reviewUrl} target="_blank" className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface">
-              Abrir link do cliente ↗
-            </a>
-            <button
-              onClick={() => { navigator.clipboard.writeText(reviewUrl); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
-              className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
-            >
-              {copied ? "Copiado!" : "Copiar link"}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {needsInternal && (
+            <button onClick={approve} disabled={busy !== null}
+              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50">
+              {busy === "approve" ? "Enviando…" : "Aprovar e enviar ao cliente"}
             </button>
-          </div>
-        )}
+          )}
+          {(changesRequested || reviewUrl || needsInternal) && (
+            <button onClick={regenerate} disabled={busy !== null}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface disabled:opacity-50">
+              {busy === "regen" ? "Regerando…" : changesRequested ? "Regerar com feedback" : "Regerar"}
+            </button>
+          )}
+          {reviewUrl && (
+            <>
+              <a href={reviewUrl} target="_blank" className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface">
+                Abrir link ↗
+              </a>
+              <button
+                onClick={() => { navigator.clipboard.writeText(reviewUrl); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+                className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
+              >
+                {copied ? "Copiado!" : "Copiar link"}
+              </button>
+            </>
+          )}
+        </div>
+        {err && <p className="w-full text-xs text-rose-500">{err}</p>}
       </div>
       <div className="grid gap-0 lg:grid-cols-3">
         <div className="p-4 lg:col-span-2"><ErrorBoundary><SpecView type={d.type} spec={d.spec} /></ErrorBoundary></div>

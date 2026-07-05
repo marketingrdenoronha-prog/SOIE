@@ -17,7 +17,14 @@ export function ClientsClient() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [modal, setModal] = useState<null | "client" | "brand" | "project">(null);
+  const [editing, setEditing] = useState<Client | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  async function archiveClient(c: Client) {
+    if (!confirm(`Arquivar o cliente "${c.name}"? Ele some das listas, mas o histórico é preservado.`)) return;
+    try { await api(`/clients/${c.id}`, { method: "DELETE" }); loadAll(); }
+    catch (e) { setErr(e instanceof Error ? e.message : "Erro"); }
+  }
 
   async function loadAll() {
     try {
@@ -47,9 +54,15 @@ export function ClientsClient() {
           {clients === null ? <p className="text-sm text-muted">…</p> :
             clients.length === 0 ? <Empty text="Cadastre um cliente" /> :
             clients.map((c) => (
-              <div key={c.id} className="rounded-lg border border-border p-3">
-                <p className="font-medium">{c.name}</p>
-                {c.industry && <p className="text-xs text-muted">{c.industry}</p>}
+              <div key={c.id} className="group flex items-start justify-between gap-2 rounded-lg border border-border p-3">
+                <div className="min-w-0">
+                  <p className="font-medium">{c.name}</p>
+                  {c.industry && <p className="text-xs text-muted">{c.industry}</p>}
+                </div>
+                <div className="flex shrink-0 gap-1 opacity-0 transition group-hover:opacity-100">
+                  <button onClick={() => setEditing(c)} title="Editar" className="grid h-7 w-7 place-items-center rounded-md border border-border text-xs hover:bg-surface">✎</button>
+                  <button onClick={() => archiveClient(c)} title="Arquivar" className="grid h-7 w-7 place-items-center rounded-md border border-border text-xs hover:bg-surface">🗄</button>
+                </div>
               </div>
             ))}
         </Column>
@@ -82,6 +95,7 @@ export function ClientsClient() {
         </Column>
       </div>
 
+      {editing && <ClientEditModal client={editing} onClose={() => setEditing(null)} onSaved={loadAll} />}
       {modal === "client" && <ClientModal onClose={() => setModal(null)} onSaved={loadAll} />}
       {modal === "brand" && <BrandModal clients={clients ?? []} onClose={() => setModal(null)} onSaved={loadAll} />}
       {modal === "project" && <ProjectModal brands={brands} onClose={() => setModal(null)} onSaved={loadAll} />}
@@ -128,6 +142,32 @@ function ClientModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
   }
   return (
     <Modal title="Novo cliente" onClose={onClose}>
+      <form onSubmit={submit} className="mt-4 space-y-3">
+        <Field label="Nome *"><input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} className={inputC} /></Field>
+        <Field label="Indústria"><input value={f.industry} onChange={(e) => setF({ ...f, industry: e.target.value })} className={inputC} /></Field>
+        <Field label="Site"><input type="url" placeholder="https://…" value={f.website} onChange={(e) => setF({ ...f, website: e.target.value })} className={inputC} /></Field>
+        {err && <p className="text-sm text-rose-500">{err}</p>}
+        <div className="flex justify-end gap-2 pt-1">
+          <button type="button" onClick={onClose} className={btnGhost}>Cancelar</button>
+          <button type="submit" disabled={busy} className={btnPrimary}>{busy ? "Salvando…" : "Salvar"}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+function ClientEditModal({ client, onClose, onSaved }: { client: Client; onClose: () => void; onSaved: () => void }) {
+  const [f, setF] = useState({ name: client.name, industry: client.industry ?? "", website: client.website ?? "" });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setBusy(true); setErr(null);
+    try {
+      await api(`/clients/${client.id}`, { method: "PATCH", body: JSON.stringify({ name: f.name, industry: f.industry || null, website: f.website || null }) });
+      onSaved(); onClose();
+    } catch (e2) { setErr(e2 instanceof Error ? e2.message : "Erro"); setBusy(false); }
+  }
+  return (
+    <Modal title="Editar cliente" onClose={onClose}>
       <form onSubmit={submit} className="mt-4 space-y-3">
         <Field label="Nome *"><input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} className={inputC} /></Field>
         <Field label="Indústria"><input value={f.industry} onChange={(e) => setF({ ...f, industry: e.target.value })} className={inputC} /></Field>

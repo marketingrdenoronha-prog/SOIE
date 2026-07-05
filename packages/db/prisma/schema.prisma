@@ -839,6 +839,7 @@ model CalendarEntry {
   calendarId     String   @db.Uuid
   contentId      String?  @db.Uuid
   postId         String?  @db.Uuid
+  title          String?
   date           DateTime
   time           String?
   status         String   @default("planned")
