@@ -42,6 +42,23 @@ export async function assembleProjectContext(
   const voice = brand.brandVoices[0];
   const strategy = project.editorialStrategies[0];
 
+  // Durable memory the user curates (guidelines, brand language, editorial
+  // direction). Pulled across the whole scope hierarchy that applies to this
+  // project so it's always part of every generation.
+  const memories = await prisma.memory.findMany({
+    where: {
+      organizationId,
+      OR: [
+        { scope: "org", scopeId: organizationId },
+        { scope: "client", scopeId: brand.clientId },
+        { scope: "brand", scopeId: brand.id },
+        { scope: "project", scopeId: project.id },
+      ],
+    },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+  });
+
   // Market + competition already gathered for this project (so downstream
   // agents reason on top of the research instead of re-deriving it).
   const [marketAnalysis, competitors] = await Promise.all([
@@ -67,6 +84,14 @@ export async function assembleProjectContext(
       products: brand.products,
     },
   };
+
+  if (memories.length > 0) {
+    context.memory = {
+      note:
+        "Memória curada pelo usuário. Trate como REGRAS OBRIGATÓRIAS: respeite estas diretrizes de linguagem, tom e linha editorial em tudo que gerar.",
+      entries: memories.map((m) => ({ kind: m.kind, content: m.content, scope: m.scope })),
+    };
+  }
 
   if (marketAnalysis || competitors.length > 0) {
     context.market = {

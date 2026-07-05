@@ -15,6 +15,7 @@ export const NAV: NavItem[] = [
   { label: "Audiência", href: "/audience", group: "Inteligência", icon: "◉" },
   { label: "DNA da Marca", href: "/brand-dna", group: "Inteligência", icon: "❖" },
   { label: "Linha Editorial", href: "/editorial", group: "Inteligência", icon: "☰" },
+  { label: "Memória", href: "/memory", group: "Inteligência", icon: "❋" },
   { label: "Biblioteca", href: "/library", group: "Inteligência", icon: "▤" },
   { label: "Agentes & Execuções", href: "/ai", group: "IA", icon: "✦" },
   { label: "Relatórios", href: "/reports", group: "IA", icon: "◭" },
