@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { prisma } from "@soie/db";
 import { Channel, DeliverableType } from "@soie/contracts";
@@ -92,23 +91,20 @@ export async function POST(req: Request) {
       throw err;
     }
 
-    const token = randomBytes(24).toString("base64url");
-    const updated = await prisma.$transaction(async (tx) => {
-      const d = await tx.deliverable.update({
-        where: { id: deliverable.id },
-        data: {
-          spec: produced.spec as object,
-          confidence: produced.confidence,
-          evaluationScore: produced.evaluationScore,
-          status: "client_review",
-        },
-      });
-      await tx.reviewLink.create({
-        data: { organizationId: org, deliverableId: d.id, token, createdBy: sub },
-      });
-      return d;
+    // Para em REVISÃO INTERNA — a equipe revisa e só então libera o link do
+    // cliente (POST /deliverables/[id]/approve). Isso evita mandar o primeiro
+    // rascunho direto ao cliente.
+    const updated = await prisma.deliverable.update({
+      where: { id: deliverable.id },
+      data: {
+        spec: produced.spec as object,
+        confidence: produced.confidence,
+        evaluationScore: produced.evaluationScore,
+        status: "internal_review",
+      },
     });
 
-    return ok({ deliverable: updated, token, reviewUrl: `/review/${token}` }, 201);
+    void sub;
+    return ok({ deliverable: updated }, 201);
   });
 }
