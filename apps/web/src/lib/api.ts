@@ -26,6 +26,15 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!res.ok) {
+    // A 401 on a request that carried a token means the session expired or the
+    // token is invalid: clear it and send the user to log in once, instead of
+    // surfacing a confusing error on every screen.
+    if (res.status === 401 && token && typeof window !== "undefined") {
+      clearToken();
+      if (!window.location.pathname.startsWith("/login")) {
+        window.location.href = "/login";
+      }
+    }
     const b = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
     throw new Error(b?.error?.message ?? `Erro ${res.status}`);
   }

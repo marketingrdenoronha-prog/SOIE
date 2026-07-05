@@ -24,8 +24,10 @@ const EnvSchema = z.object({
 
   JWT_ACCESS_SECRET: z.string().min(8).default("dev-access-secret"),
   JWT_REFRESH_SECRET: z.string().min(8).default("dev-refresh-secret"),
-  JWT_ACCESS_TTL: z.coerce.number().default(900),
-  JWT_REFRESH_TTL: z.coerce.number().default(60 * 60 * 24 * 14),
+  // Long-lived access token: there is no refresh-token flow yet, so a short TTL
+  // would silently log users out mid-use. 30 days = "log in once, keep using".
+  JWT_ACCESS_TTL: z.coerce.number().default(60 * 60 * 24 * 30),
+  JWT_REFRESH_TTL: z.coerce.number().default(60 * 60 * 24 * 30),
 
   SECRETS_MASTER_KEY: z.string().default("base64:dev-master-key"),
 
