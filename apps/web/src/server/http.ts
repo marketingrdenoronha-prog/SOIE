@@ -22,6 +22,23 @@ export function handle(
     if (err instanceof HttpError) {
       return fail(err.code, err.message, err.status);
     }
+    // Corpo JSON malformado/vazio (req.json() lança SyntaxError) é erro do
+    // cliente, não do servidor.
+    if (err instanceof SyntaxError) {
+      return fail("bad_request", "JSON inválido no corpo da requisição", 400);
+    }
+    // Erros conhecidos do Prisma: mapeados para o status certo em vez de 500.
+    const code = (err as { code?: unknown })?.code;
+    if (typeof code === "string") {
+      // P2023: id/uuid malformado; P2025: registro não encontrado.
+      if (code === "P2023" || code === "P2025") {
+        return fail("not_found", "Recurso não encontrado", 404);
+      }
+      // P2003: FK inexistente; P2000/P2006/P2007: valor inválido para a coluna.
+      if (code === "P2003" || code === "P2000" || code === "P2006" || code === "P2007") {
+        return fail("bad_request", "Referência ou valor inválido", 400);
+      }
+    }
     console.error("route error", err);
     // Include the underlying error message so the client sees the real cause
     // (Prisma-not-connected, missing table, JWT-secret-missing, etc.) instead
