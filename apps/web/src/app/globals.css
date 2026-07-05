@@ -2,25 +2,57 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Cyber-Editorial OS — light foundation with a Cyber-Green action color.
+   Tokens drive Tailwind's color utilities (bg-elevated, text-brand, …), so the
+   whole app re-skins from here. Dark mode (.dark) mirrors the DESIGN.md
+   "Dark Room" palette. */
 :root {
-  --surface: 250 250 250;
-  --elevated: 255 255 255;
-  --border: 226 226 230;
-  --muted: 113 113 122;
-  --foreground: 24 24 27;
-  --brand: 79 70 229;
+  --surface: 247 248 247;      /* page base       #F7F8F7 */
+  --elevated: 255 255 255;     /* cards / sidebar  #FFFFFF */
+  --border: 226 229 226;       /* hairline outline #E2E5E2 */
+  --muted: 106 114 110;        /* secondary text   #6A726E */
+  --foreground: 22 26 22;      /* primary text     #161A16 */
+  --brand: 22 163 74;          /* Cyber Green (accessible on white) #16A34A */
+  --brand-strong: 21 128 61;   /* pressed / solid buttons  #15803D */
+  --ok: 22 163 74;
+  --warn: 180 120 4;
+  --crit: 220 38 38;
 }
 
 :root.dark {
-  --surface: 12 12 14;
-  --elevated: 24 24 27;
-  --border: 39 39 42;
-  --muted: 161 161 170;
-  --foreground: 244 244 245;
-  --brand: 129 140 248;
+  --surface: 12 12 14;         /* #0C0C0E */
+  --elevated: 24 24 27;        /* #18181B */
+  --border: 39 39 42;          /* #27272A */
+  --muted: 161 161 170;        /* #A1A1AA */
+  --foreground: 244 244 245;   /* #F4F4F5 */
+  --brand: 36 255 95;          /* #24FF5F */
+  --brand-strong: 36 255 95;
+  --ok: 36 255 95;
+  --warn: 251 191 36;
+  --crit: 251 113 133;
 }
+
+html { font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif; }
 
 body {
   background: rgb(var(--surface));
   color: rgb(var(--foreground));
+}
+
+/* Monospace utility for labels / status chips / data (JetBrains Mono). */
+.font-data, .label-caps {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.label-caps {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Focus ring in brand green for keyboard users. */
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid rgb(var(--brand));
+  outline-offset: 1px;
 }
