@@ -8,10 +8,9 @@ import { api, clearToken, isLoggedIn } from "@/lib/api";
 /** Topbar: global search, section tabs (Work/Intelligence/AI/Admin),
  * notifications, help and account. */
 const TABS: { label: string; href: string; match: string[] }[] = [
-  { label: "Work", href: "/dashboard", match: ["/dashboard", "/clients", "/deliverables", "/calendar"] },
-  { label: "Intelligence", href: "/market", match: ["/market", "/audience", "/brand-dna", "/editorial", "/memory", "/library"] },
-  { label: "AI", href: "/ai", match: ["/ai", "/reports"] },
-  { label: "Admin", href: "/settings", match: ["/settings", "/import"] },
+  { label: "Visão geral", href: "/dashboard", match: ["/dashboard"] },
+  { label: "Clientes", href: "/clients", match: ["/clients"] },
+  { label: "Configurações", href: "/settings", match: ["/settings"] },
 ];
 
 export function Topbar() {

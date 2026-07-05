@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 
@@ -54,11 +55,11 @@ export function ClientsClient() {
           {clients === null ? <p className="text-sm text-muted">…</p> :
             clients.length === 0 ? <Empty text="Cadastre um cliente" /> :
             clients.map((c) => (
-              <div key={c.id} className="group flex items-start justify-between gap-2 rounded-lg border border-border p-3">
-                <div className="min-w-0">
+              <div key={c.id} className="group flex items-start justify-between gap-2 rounded-lg border border-border p-3 transition hover:border-brand/50">
+                <Link href={`/clients/${c.id}`} className="min-w-0 flex-1">
                   <p className="font-medium">{c.name}</p>
                   {c.industry && <p className="text-xs text-muted">{c.industry}</p>}
-                </div>
+                </Link>
                 <div className="flex shrink-0 gap-1 opacity-0 transition group-hover:opacity-100">
                   <button onClick={() => setEditing(c)} title="Editar" className="grid h-7 w-7 place-items-center rounded-md border border-border text-xs hover:bg-surface">✎</button>
                   <button onClick={() => archiveClient(c)} title="Arquivar" className="grid h-7 w-7 place-items-center rounded-md border border-border text-xs hover:bg-surface">🗄</button>

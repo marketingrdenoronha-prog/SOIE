@@ -264,20 +264,25 @@ model Session {
 // ─────────────────────────────────────────────────────────────────────────
 
 model Client {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String    @db.Uuid
-  name           String
-  industry       String?
-  website        String?
-  logoUrl        String?
-  status         String    @default("active")
-  tags           Json      @default("[]")
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  deletedAt      DateTime?
+  id               String    @id @default(uuid()) @db.Uuid
+  organizationId   String    @db.Uuid
+  name             String
+  industry         String?
+  website          String?
+  logoUrl          String?
+  status           String    @default("active")
+  tags             Json      @default("[]")
+  // V2: FK opcional para a EditorialStrategy aprovada corrente. Nullable até
+  // o cliente aprovar sua primeira linha editorial.
+  activeStrategyId String?   @db.Uuid
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
 
   brands    Brand[]
   briefings Briefing[]
+  onboarding StrategicOnboarding?
+  dossiers  StrategicDossier[]
 
   @@index([organizationId])
   @@map("clients")
@@ -659,19 +664,33 @@ model EditorialStrategy {
   id             String     @id @default(uuid()) @db.Uuid
   organizationId String     @db.Uuid
   projectId      String     @db.Uuid
-  positioning    String?
-  pillars        Json       @default("[]")
-  objectives     Json       @default("{}")
-  rationale      String?
-  confidence     Confidence @default(medium)
-  status         String     @default("draft")
-  createdAt      DateTime   @default(now())
+  // V2: FK direto ao Client para navegação simplificada (nullable até o
+  // seeder V2 backfillar clientes existentes).
+  clientId       String?    @db.Uuid
+  // V2: versionamento — cada geração é uma nova linha, nunca sobrescrita.
+  // `parentStrategyId` traça a linha do tempo V1 → V2 → V3.
+  version           Int        @default(1)
+  parentStrategyId  String?    @db.Uuid
+  positioning       String?
+  pillars           Json       @default("[]")
+  objectives        Json       @default("{}")
+  rationale         String?
+  confidence        Confidence @default(medium)
+  // Fluxo: draft → pending_client → approved | changes_requested.
+  status            String     @default("draft")
+  submittedAt       DateTime?
+  approvedAt        DateTime?
+  changesRequestedAt DateTime?
+  createdAt         DateTime   @default(now())
 
-  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  editorialLines EditorialLine[]
+  project         Project                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  editorialLines  EditorialLine[]
+  reviewLinks     EditorialReviewLink[]
+  reviewComments  EditorialReviewComment[]
 
   @@index([organizationId])
   @@index([projectId])
+  @@index([clientId])
   @@map("editorial_strategies")
 }
 
@@ -711,19 +730,29 @@ model Category {
 }
 
 model Theme {
-  id             String @id @default(uuid()) @db.Uuid
-  organizationId String @db.Uuid
-  categoryId     String @db.Uuid
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String  @db.Uuid
+  categoryId     String  @db.Uuid
   title          String
   angle          String?
-  microthemes    Json   @default("[]")
-  priority       Int    @default(0)
+  microthemes    Json    @default("[]")
+  priority       Int     @default(0)
+  // V2: canal e formato pré-atribuídos ao tema durante a geração da linha
+  // editorial — o operador não precisa reescolher no momento da produção.
+  channel        String?
+  format         String?
+  // FK inversa: quando a produção automática cria um Deliverable para este
+  // tema, guarda o id para evitar duplicação e permitir navegação. @unique
+  // porque cada tema gera no máximo 1 peça (a produção reusa se re-clicada).
+  deliverableId  String? @unique @db.Uuid
 
   category     Category      @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   contentIdeas ContentIdea[]
+  deliverable  Deliverable?  @relation("ThemeDeliverable", fields: [deliverableId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([categoryId])
+  @@index([deliverableId])
   @@map("themes")
 }
 
@@ -894,6 +923,11 @@ model Deliverable {
   confidence     Confidence?
   evaluationScore Int?
   orchestrationRunId String?       @db.Uuid
+  // V2: FK reversa opcional — se este deliverable foi produzido a partir de
+  // um tema de linha editorial aprovada, rastreia a origem.
+  themeId        String?           @db.Uuid
+  // V2: marcada quando o operador clica "Marcar entregue" (fim do fluxo).
+  deliveredAt    DateTime?
   createdBy      String?           @db.Uuid
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
@@ -901,10 +935,12 @@ model Deliverable {
   project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   reviewLinks ReviewLink[]
   comments    ReviewComment[]
+  originTheme Theme?        @relation("ThemeDeliverable")
 
   @@index([organizationId])
   @@index([projectId])
   @@index([status])
+  @@index([themeId])
   @@map("deliverables")
 }
 
@@ -1397,4 +1433,87 @@ model Report {
 
   @@index([organizationId])
   @@map("reports")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// V2 — Fluxo linear (Onboarding → Dossiê → Linha Editorial → Aprovação)
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Onboarding estruturado do cliente (V2). É o único ponto de coleta manual do
+/// operador — todo o resto (pesquisa, dossiê, linha editorial) é IA. Guardado
+/// como payload flexível (Json) para o wizard multi-step evoluir sem migração.
+model StrategicOnboarding {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  clientId       String    @unique @db.Uuid
+  status         String    @default("draft")  // draft | completed
+  step           Int       @default(0)        // progresso do wizard (0..N)
+  payload        Json      @default("{}")
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("strategic_onboardings")
+}
+
+/// Snapshot congelado gerado logo após o onboarding: agrega mercado, personas,
+/// concorrentes e voz da marca num único documento estratégico. Não é editado
+/// manualmente — é a memória de partida da IA para gerar linhas editoriais.
+model StrategicDossier {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  clientId       String    @db.Uuid
+  version        Int       @default(1)
+  status         String    @default("generating")  // generating | ready | failed
+  summary        Json      @default("{}")           // snapshot editorial + estratégico
+  sources        Json      @default("[]")           // ids dos artefatos derivados
+  generatedAt    DateTime?
+  createdAt      DateTime  @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([clientId])
+  @@map("strategic_dossiers")
+}
+
+/// Link público tokenizado para o cliente aprovar/pedir ajuste na LINHA
+/// EDITORIAL (espelha ReviewLink, mas para EditorialStrategy).
+model EditorialReviewLink {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  strategyId     String    @db.Uuid
+  token          String    @unique
+  status         String    @default("open") // open | decided | revoked
+  createdBy      String?   @db.Uuid
+  expiresAt      DateTime?
+  lastViewedAt   DateTime?
+  createdAt      DateTime  @default(now())
+
+  strategy EditorialStrategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([strategyId])
+  @@map("editorial_review_links")
+}
+
+/// Comentário do cliente sobre uma linha editorial (aprovação ou ajuste). O
+/// texto do ajuste é dobrado no brief da próxima versão para o agente evoluir
+/// a estratégia sem recomeçar.
+model EditorialReviewComment {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  strategyId     String   @db.Uuid
+  decision       String              // approve | request_changes
+  comment        String?
+  authorName     String?
+  createdAt      DateTime @default(now())
+
+  strategy EditorialStrategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+
+  @@index([strategyId])
+  @@map("editorial_review_comments")
 }

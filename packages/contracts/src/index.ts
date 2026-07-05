@@ -4,3 +4,4 @@ export * from "./organization.js";
 export * from "./ai.js";
 export * from "./deliverables.js";
 export * from "./review.js";
+export * from "./onboarding.js";

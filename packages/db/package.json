@@ -19,6 +19,7 @@
     "validate": "prisma validate",
     "rls": "tsx prisma/apply-rls.ts",
     "seed": "tsx prisma/seed.ts",
+    "seed:v2": "tsx prisma/seed-v2.ts",
     "studio": "prisma studio",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",

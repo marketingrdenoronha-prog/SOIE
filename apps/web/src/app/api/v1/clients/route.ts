@@ -2,6 +2,7 @@ import { prisma } from "@soie/db";
 import { createClientInput } from "@soie/contracts";
 import { requireAuth } from "@/server/auth";
 import { ok, handle } from "@/server/http";
+import { resolveDefaultProjectId } from "@/server/client-scope";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +32,9 @@ export async function POST(req: Request) {
         tags: input.tags,
       },
     });
+    // V2: auto-provisiona Brand+Project default para que módulos internos
+    // (linhas editoriais, memória, pesquisa) já tenham um escopo pronto.
+    await resolveDefaultProjectId(client.id, org);
     return ok(client, 201);
   });
 }

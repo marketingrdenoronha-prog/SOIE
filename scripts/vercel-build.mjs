@@ -16,9 +16,11 @@ function run(cmd, args) {
 run("pnpm", ["--filter", "@soie/db", "generate"]);
 
 if (process.env.DATABASE_URL) {
-  console.log("► DATABASE_URL set — running migrate:deploy + seed");
+  console.log("► DATABASE_URL set — running migrate:deploy + seed + V2 backfill");
   run("pnpm", ["--filter", "@soie/db", "migrate:deploy"]);
   run("pnpm", ["--filter", "@soie/db", "seed"]);
+  // V2 Fase 1: garante Brand+Project default para clientes legado. Idempotente.
+  run("pnpm", ["--filter", "@soie/db", "seed:v2"]);
 } else {
   console.log("► DATABASE_URL not set — skipping migrate/seed (site builds anyway)");
 }
