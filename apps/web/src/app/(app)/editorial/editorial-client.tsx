@@ -27,6 +27,7 @@ export function EditorialClient() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [dropTheme, setDropTheme] = useState<string | null>(null);
+  const [reviewBusy, setReviewBusy] = useState<string | null>(null);
 
   async function load() {
     if (!projectId) return;
@@ -34,6 +35,15 @@ export function EditorialClient() {
     catch (e) { setErr(e instanceof Error ? e.message : "Erro"); }
   }
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [projectId]);
+
+  async function sendForReview(id: string) {
+    setReviewBusy(id); setErr(null);
+    try {
+      await api(`/editorial/${id}/review`, { method: "POST" });
+      await load();
+    } catch (e) { setErr(e instanceof Error ? e.message : "Erro"); }
+    finally { setReviewBusy(null); }
+  }
 
   async function generate() {
     if (!projectId) return;
@@ -66,6 +76,11 @@ export function EditorialClient() {
         strategies.length === 0 ? <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted">Sem estratégia ainda.</p> :
         strategies.map((s) => (
           <div key={s.id} className="rounded-xl border border-border bg-elevated p-5 space-y-4">
+            <StrategyReviewBar
+              s={s}
+              busy={reviewBusy === s.id}
+              onSend={() => sendForReview(s.id)}
+            />
             {s.positioning && <div><p className="text-xs font-medium uppercase tracking-wider text-muted">Posicionamento</p><p className="mt-1 text-sm">{text(s.positioning)}</p></div>}
             {arr(s.pillars).length > 0 && <div><p className="text-xs font-medium uppercase tracking-wider text-muted">Pilares</p><div className="mt-1 flex flex-wrap gap-2">{arr(s.pillars).map((p: unknown, i: number) => <span key={i} className="rounded-md bg-brand/10 px-2 py-0.5 text-xs text-brand">{text(p)}</span>)}</div></div>}
             {s.editorialLines?.map((line: {
@@ -109,6 +124,54 @@ export function EditorialClient() {
           onClose={() => setDropTheme(null)}
         />
       )}
+    </div>
+  );
+}
+
+/** Client-approval bar for an editorial strategy: shows the status, lets the
+ * team send it for the client to approve, and exposes the copyable link. */
+function StrategyReviewBar({ s, busy, onSend }: { s: any; busy: boolean; onSend: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const reviewUrl = s.reviewToken && typeof window !== "undefined" ? `${window.location.origin}/strategy-review/${s.reviewToken}` : null;
+  const status: string = s.status ?? "draft";
+  const map: Record<string, [string, string]> = {
+    draft: ["Rascunho", "bg-border/60 text-muted"],
+    in_review: ["Aguardando cliente", "bg-amber-500/15 text-amber-500"],
+    approved: ["Aprovada pelo cliente", "bg-emerald-500/15 text-emerald-500"],
+    changes_requested: ["Ajuste pedido", "bg-rose-500/15 text-rose-500"],
+  };
+  const [label, cls] = map[status] ?? [status, "bg-border/60 text-muted"];
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
+      <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${cls}`}>{label}</span>
+      {status === "changes_requested" && s.clientComment && (
+        <span className="text-xs text-muted">Cliente: “{text(s.clientComment)}”</span>
+      )}
+      <div className="ml-auto flex items-center gap-2">
+        {reviewUrl && (
+          <>
+            <a href={reviewUrl} target="_blank" className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface">
+              Abrir link do cliente ↗
+            </a>
+            <button
+              onClick={() => { navigator.clipboard.writeText(reviewUrl); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface"
+            >
+              {copied ? "Copiado!" : "Copiar link"}
+            </button>
+          </>
+        )}
+        {status !== "approved" && (
+          <button
+            onClick={onSend}
+            disabled={busy}
+            className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {busy ? "Enviando…" : status === "draft" ? "Enviar para aprovação" : "Reenviar para aprovação"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
