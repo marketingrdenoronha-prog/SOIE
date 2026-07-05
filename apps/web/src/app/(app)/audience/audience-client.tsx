@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { text, arr } from "@/lib/render";
 import { PageHeader } from "@/components/page-header";
 import { ProjectPicker } from "@/components/project-picker";
 
@@ -59,13 +60,13 @@ export function AudienceClient() {
           {personas.map((p) => (
             <div key={p.id} className="rounded-xl border border-border bg-elevated p-5">
               <div className="flex items-start justify-between">
-                <h3 className="text-base font-semibold">{p.name}</h3>
-                <span className="rounded-full bg-brand/10 px-2.5 py-0.5 text-xs text-brand">{p.confidence}</span>
+                <h3 className="text-base font-semibold">{text(p.name)}</h3>
+                <span className="rounded-full bg-brand/10 px-2.5 py-0.5 text-xs text-brand">{text(p.confidence)}</span>
               </div>
               <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                <ListBox title="Dores" items={p.pains?.map((x: { description: string }) => x.description) ?? []} />
-                <ListBox title="Objeções" items={p.objections?.map((x: { description: string }) => x.description) ?? []} />
-                <ListBox title="Desejos" items={p.desires?.map((x: { description: string }) => x.description) ?? []} />
+                <ListBox title="Dores" items={arr(p.pains).map((x: any) => text(x?.description ?? x))} />
+                <ListBox title="Objeções" items={arr(p.objections).map((x: any) => text(x?.description ?? x))} />
+                <ListBox title="Desejos" items={arr(p.desires).map((x: any) => text(x?.description ?? x))} />
               </div>
             </div>
           ))}

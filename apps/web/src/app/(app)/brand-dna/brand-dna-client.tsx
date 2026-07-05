@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { text, arr } from "@/lib/render";
 import { PageHeader } from "@/components/page-header";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -67,10 +68,10 @@ export function BrandDnaClient() {
       {currentVoice && (
         <div className="rounded-xl border border-border bg-elevated p-5 space-y-3">
           <h3 className="text-sm font-semibold">Voz da marca</h3>
-          <Row label="Formalidade" value={currentVoice.formality ?? "—"} />
-          <Row label="Confiança" value={currentVoice.confidence} />
-          {currentVoice.doList?.length > 0 && <List title="Faça" items={currentVoice.doList} color="text-emerald-500" />}
-          {currentVoice.dontList?.length > 0 && <List title="Não faça" items={currentVoice.dontList} color="text-rose-500" />}
+          <Row label="Formalidade" value={text(currentVoice.formality) || "—"} />
+          <Row label="Confiança" value={text(currentVoice.confidence)} />
+          {arr(currentVoice.doList).length > 0 && <List title="Faça" items={arr(currentVoice.doList)} color="text-emerald-500" />}
+          {arr(currentVoice.dontList).length > 0 && <List title="Não faça" items={arr(currentVoice.dontList)} color="text-rose-500" />}
         </div>
       )}
 
@@ -80,7 +81,7 @@ export function BrandDnaClient() {
           <div className="flex flex-wrap gap-2">
             {data.archetypes.map((a, i) => (
               <span key={i} className="rounded-full bg-brand/10 px-3 py-1 text-sm text-brand">
-                {a.archetype} · {(a.weight * 100).toFixed(0)}%
+                {text(a.archetype)} · {(Number(a.weight) * 100 || 0).toFixed(0)}%
               </span>
             ))}
           </div>
@@ -93,7 +94,7 @@ export function BrandDnaClient() {
           <div className="grid gap-2 sm:grid-cols-2">
             {data.vocabularies.map((v, i) => (
               <div key={i} className="rounded-lg border border-border p-2 text-sm">
-                <span className="text-xs text-muted">{v.kind}: </span><b>{v.term}</b>
+                <span className="text-xs text-muted">{text(v.kind)}: </span><b>{text(v.term)}</b>
               </div>
             ))}
           </div>
@@ -105,11 +106,11 @@ export function BrandDnaClient() {
 function Row({ label, value }: { label: string; value: string }) {
   return <div className="flex justify-between text-sm"><span className="text-muted">{label}</span><span className="font-medium">{value}</span></div>;
 }
-function List({ title, items, color }: { title: string; items: string[]; color: string }) {
+function List({ title, items, color }: { title: string; items: unknown[]; color: string }) {
   return (
     <div>
       <p className={`text-xs font-medium uppercase tracking-wider ${color}`}>{title}</p>
-      <ul className="mt-1 space-y-1 text-sm">{items.map((it, i) => <li key={i}>• {it}</li>)}</ul>
+      <ul className="mt-1 space-y-1 text-sm">{items.map((it, i) => <li key={i}>• {text(it)}</li>)}</ul>
     </div>
   );
 }
