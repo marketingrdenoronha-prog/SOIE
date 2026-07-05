@@ -130,6 +130,26 @@
   .screen { display: none; }
   .screen.active { display: block; }
 
+  /* Full-screen public pages (login/register/review) */
+  .app.fullscreen .sidebar, .app.fullscreen .topbar { display: none; }
+  .app.fullscreen { grid-template-columns: 1fr; }
+  .app.fullscreen .content { padding: 0; }
+  .app.fullscreen .wrap { max-width: none; }
+  .auth-wrap { min-height: 100vh; display: grid; place-items: center; padding: 32px 16px; background: var(--surface); }
+  .auth-card { width: 100%; max-width: 400px; background: var(--elevated); border: 1px solid var(--border); border-radius: 16px; padding: 32px; box-shadow: var(--shadow); }
+  .auth-brand { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }
+  .auth-brand .logo { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--brand); color: #fff; font-weight: 700; }
+  .auth-brand .name { font-weight: 600; }
+  .auth-title { font-size: 22px; font-weight: 650; letter-spacing: -.02em; }
+  .auth-sub { color: var(--muted); margin-top: 4px; }
+  .auth-alt { text-align: center; margin-top: 16px; font-size: 13px; color: var(--muted); }
+  .auth-alt a { color: var(--brand); font-weight: 500; cursor: pointer; }
+  .review-wrap { min-height: 100vh; background: var(--surface); }
+  .review-top { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); background: var(--elevated); position: sticky; top: 0; }
+  .review-body { max-width: 640px; margin: 0 auto; padding: 28px 20px 64px; }
+  .back-fab { position: fixed; top: 14px; left: 16px; z-index: 60; background: var(--elevated); border: 1px solid var(--border); box-shadow: var(--shadow); border-radius: 999px; padding: 7px 14px; font-size: 13px; color: var(--fg); display: none; }
+  .app.fullscreen ~ .back-fab { display: block; }
+
   .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 9px; padding: 3px; gap: 3px; }
   .seg button { border: none; background: none; color: var(--muted); padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; }
   .seg button.on { background: var(--brand); color: #fff; }
@@ -175,7 +195,8 @@
   </div>
 </div>
 
-<div class="demo-tag">Protótipo estático — <b>SOIE</b> · frontend completo em 1 arquivo</div>
+<button class="back-fab" id="backFab">← Voltar ao app</button>
+<div class="demo-tag" id="demoTag">Protótipo estático — <b>SOIE</b> · frontend completo em 1 arquivo</div>
 
 <script>
 const NAV = [
@@ -185,7 +206,10 @@ const NAV = [
     ["market","Mercado","◈"],["audience","Audiência","◉"],["dna","DNA da Marca","❖"],["editorial","Linha Editorial","☰"],["memory","Memória","❋"],["library","Biblioteca","▤"] ]},
   { g:"IA", items:[ ["ai","Agentes & Execuções","✦"],["reports","Relatórios","◭"] ]},
   { g:"Admin", items:[ ["import","Importar base","⇪"],["settings","Configurações","⚙"] ]},
+  { g:"Telas públicas", items:[ ["login","Login","→"],["register","Criar conta","＋"],["review","Revisão do cliente","◎"] ]},
 ];
+// Telas que ocupam a viewport inteira (sem sidebar/topbar), como no app real.
+const FULLSCREEN = new Set(["login","register","review"]);
 
 const H = (s) => s; // passthrough for readability
 
@@ -367,7 +391,7 @@ audience: `
         ${[["Taxas corroem a margem sem ele perceber",5],["Medo de trocar e dar problema no checkout",4],["Sem tempo para detalhes técnicos",3]].map(([d,i])=>`
         <div class="item"><p style="font-size:13px">${d}</p><div class="row" style="margin-top:6px"><div class="bar-track" style="flex:1"><div class="bar-fill" style="width:${i*20}%"></div></div><span class="sub tnum">${i}/5</span></div></div>`).join("")}</div></div>
       <div><span class="label">Objeções</span><div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
-        ${[["\\"Será confiável?\\"","Mostrar cases e certificações logo no início"],["\\"Vai dar trabalho migrar\\"","Onboarding assistido em 48h"]].map(([o,c])=>`
+        ${[["\"Será confiável?\"","Mostrar cases e certificações logo no início"],["\"Vai dar trabalho migrar\"","Onboarding assistido em 48h"]].map(([o,c])=>`
         <div class="item"><p style="font-size:13px;font-weight:500">${o}</p><p class="sub" style="margin-top:4px">→ ${c}</p></div>`).join("")}</div></div>
       <div><span class="label">Desejos</span><div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
         ${[["Sentir que está em boas mãos",5],["Ver economia real no fim do mês",5]].map(([d,i])=>`
@@ -426,10 +450,24 @@ memory: `
 
 library: `
   <div class="page-head"><h1>Biblioteca</h1><p>Frameworks, ganchos, templates e roteiros reutilizáveis.</p></div>
-  <div class="seg"><button class="on">Frameworks</button><button>Ganchos</button><button>Templates</button><button>Roteiros</button></div>
-  <div class="grid g2">
+  <div class="seg" data-tabs="lib">
+    <button class="on" data-tab="frameworks">Frameworks</button><button data-tab="hooks">Ganchos</button><button data-tab="templates">Templates</button><button data-tab="scripts">Roteiros</button>
+  </div>
+  <div data-panel="lib" data-name="frameworks" class="grid g2">
     ${[["AIDA","Atenção → Interesse → Desejo → Ação","Sistema"],["PAS","Problema → Agitação → Solução","Sistema"],["4 U's","Útil, Urgente, Único, Ultraespecífico","Sistema"],["Antes/Depois/Ponte","Estado atual → desejado → como chegar","Beam"]].map(([n,d,o])=>`
       <div class="card card-p"><div class="row"><h2>${n}</h2><span class="pill ${o==='Sistema'?'p-muted':'p-brand'}">${o}</span></div><p class="sub" style="margin-top:6px">${d}</p></div>`).join("")}
+  </div>
+  <div data-panel="lib" data-name="hooks" class="grid g2" style="display:none">
+    ${[["\"Você está perdendo dinheiro sem saber\"","Curiosidade + perda"],["\"Ninguém te conta isso sobre…\"","Segredo revelado"],["\"3 erros que quase todo mundo comete\"","Lista + erro"],["\"Para de fazer isso agora\"","Comando + urgência"]].map(([h,t])=>`
+      <div class="card card-p"><p style="font-weight:500">${h}</p><p class="sub" style="margin-top:6px">${t}</p></div>`).join("")}
+  </div>
+  <div data-panel="lib" data-name="templates" class="grid g2" style="display:none">
+    ${[["Carrossel educativo","5 slides: erro → 3 causas → solução → CTA"],["Reels de prova","gancho → problema → case → resultado → CTA"],["E-mail de oferta","dor → solução → prova → prazo → CTA"],["Anúncio de tráfego","headline → benefício → prova → ação"]].map(([n,d])=>`
+      <div class="card card-p"><h2>${n}</h2><p class="sub" style="margin-top:6px">${d}</p></div>`).join("")}
+  </div>
+  <div data-panel="lib" data-name="scripts" class="grid g2" style="display:none">
+    ${[["Reels — Paradise","instagram · aprovado"],["Carrossel — JumpFy","instagram · revisão"],["E-mail — Connect Store","email · rascunho"],["Anúncio — Átomo Pay","meta_ads · aprovado"]].map(([n,m])=>`
+      <div class="card card-p"><h2>${n}</h2><p class="sub" style="margin-top:6px">${m}</p></div>`).join("")}
   </div>`,
 
 ai: `
@@ -500,6 +538,71 @@ settings: `
       <button class="btn btn-primary" style="align-self:flex-start">Alterar senha</button>
     </div>
   </div>`,
+
+login: `
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-brand"><span class="logo">S</span><span class="name">SOIE</span></div>
+      <h1 class="auth-title">Entrar</h1>
+      <p class="auth-sub">Acesse sua agência editorial.</p>
+      <div class="field" style="margin-top:18px"><span class="label">E-mail</span><input class="f" value="marco@beam360.com.br"></div>
+      <div class="field" style="margin-top:12px"><span class="label">Senha</span><input class="f" type="password" value="••••••••••"></div>
+      <button class="btn btn-primary" style="width:100%; margin-top:18px">Entrar</button>
+      <p class="auth-alt">Não tem conta? <a data-goto="register">Criar conta</a></p>
+    </div>
+  </div>`,
+
+register: `
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-brand"><span class="logo">S</span><span class="name">SOIE</span></div>
+      <h1 class="auth-title">Criar conta</h1>
+      <p class="auth-sub">Crie sua organização e comece a produzir.</p>
+      <div class="field" style="margin-top:18px"><span class="label">Nome da agência</span><input class="f" value="Beam Agência"></div>
+      <div class="field" style="margin-top:12px"><span class="label">Seu nome</span><input class="f" value="Marco"></div>
+      <div class="field" style="margin-top:12px"><span class="label">E-mail</span><input class="f" value="marco@beam360.com.br"></div>
+      <div class="field" style="margin-top:12px"><span class="label">Senha (mín. 8)</span><input class="f" type="password" value="••••••••••"></div>
+      <button class="btn btn-primary" style="width:100%; margin-top:18px">Criar conta e organização</button>
+      <p class="auth-alt">Já tem conta? <a data-goto="login">Entrar</a></p>
+    </div>
+  </div>`,
+
+review: `
+  <div class="review-wrap">
+    <div class="review-top">
+      <div class="brand" style="border:none;padding:0;height:auto"><span class="logo">S</span><span class="name">SOIE</span></div>
+      <span class="pill p-warn">Aguardando sua avaliação</span>
+    </div>
+    <div class="review-body">
+      <p class="label">Entrega para revisão</p>
+      <h1 class="auth-title" style="margin-top:4px">Reels Instagram — Paradise</h1>
+      <p class="auth-sub">Beam Agência enviou este roteiro para você aprovar ou pedir ajuste.</p>
+
+      <div class="card card-p" style="margin-top:18px; display:flex; flex-direction:column; gap:14px">
+        <div><span class="label">Gancho (0–3s)</span><p style="font-weight:600;margin-top:4px">Você está perdendo dinheiro em cada venda sem saber?</p></div>
+        ${[["1","3s","Close no rosto, corte seco","Se você aceita cartão, para agora.","PARE"],
+           ["2","6s","Tela do checkout","A taxa escondida come sua margem.","A taxa oculta"],
+           ["3","8s","Dashboard Paradise","Com a Paradise você vê tudo e paga menos.","-1,2% por venda"]].map(([n,s,v,vo,t])=>`
+          <div class="scene"><div class="row"><span class="pill p-brand">Cena ${n}</span><span class="sub tnum">${s}</span></div>
+          <p style="margin-top:6px"><span class="muted">Visual:</span> ${v}</p>
+          <p><span class="muted">Narração:</span> ${vo}</p>
+          <p><span class="muted">Texto na tela:</span> ${t}</p></div>`).join("")}
+        <div><span class="label">CTA</span><p style="margin-top:4px">Comenta 'QUERO' para receber a simulação de taxas.</p></div>
+      </div>
+
+      <div class="card card-p" style="margin-top:16px">
+        <p class="label">O que você achou?</p>
+        <div class="field" style="margin-top:10px"><span class="label">Seu nome (opcional)</span><input class="f" placeholder="Ex.: Marco"></div>
+        <div class="field" style="margin-top:10px"><span class="label">Comentário (para ajustes)</span>
+          <textarea class="f" rows="2" placeholder="Ex.: trocar o gancho da abertura, deixar o CTA mais direto…"></textarea></div>
+        <div class="row" style="gap:10px; margin-top:14px">
+          <button class="btn btn-ok" style="flex:1">✓ Aprovar</button>
+          <button class="btn btn-ghost" style="flex:1">✎ Solicitar ajuste</button>
+        </div>
+      </div>
+      <p class="note" style="text-align:center; margin-top:14px">Link seguro • você não precisa de conta para responder.</p>
+    </div>
+  </div>`,
 };
 
 // ---------- Build nav ----------
@@ -514,13 +617,32 @@ const screensEl = document.getElementById("screens");
 screensEl.innerHTML = Object.entries(SCREENS).map(([id,html]) =>
   `<div class="screen" id="s-${id}">${html}</div>`).join("");
 
+const appEl = document.querySelector(".app");
 function go(id){
   document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === "s-"+id));
   document.querySelectorAll(".nav-item").forEach(n => n.classList.toggle("active", n.dataset.screen === id));
-  document.querySelector(".content").scrollTop = 0;
+  const full = FULLSCREEN.has(id);
+  appEl.classList.toggle("fullscreen", full);
+  document.getElementById("demoTag").style.display = full ? "none" : "";
+  document.getElementById("backFab").style.display = full ? "block" : "none";
   window.scrollTo(0,0);
 }
 navEl.querySelectorAll(".nav-item").forEach(b => b.addEventListener("click", () => go(b.dataset.screen)));
+document.getElementById("backFab").addEventListener("click", () => go("dashboard"));
+// Links internos entre login/registro
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-goto]");
+  if (t) { e.preventDefault(); go(t.dataset.goto); }
+});
+// Abas (seg) genéricas: alterna .on e mostra o painel correspondente
+document.addEventListener("click", (e) => {
+  const tab = e.target.closest(".seg[data-tabs] button[data-tab]");
+  if (!tab) return;
+  const group = tab.closest(".seg").dataset.tabs;
+  tab.parentElement.querySelectorAll("button").forEach(b => b.classList.toggle("on", b === tab));
+  document.querySelectorAll(`[data-panel="${group}"]`).forEach(p =>
+    p.style.display = p.dataset.name === tab.dataset.tab ? "" : "none");
+});
 go("dashboard");
 
 // ---------- Theme toggle ----------
