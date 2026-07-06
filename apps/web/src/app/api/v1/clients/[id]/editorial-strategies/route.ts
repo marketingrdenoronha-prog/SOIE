@@ -94,7 +94,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         status: "draft",
         editorialLines: {
           create: (result.lines ?? []).map((line: {
-            name: string; objective: string; funnelStage: string; platforms?: string[]; categories?: { name: string; themes?: { title: string; channel?: string; format?: string }[] }[];
+            name: string; objective: string; funnelStage: string; platforms?: string[]; categories?: { name: string; themes?: { title: string; channel?: string; format?: string; copy?: unknown }[] }[];
           }) => ({
             organizationId: org,
             name: line.name,
@@ -111,6 +111,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
                     title: t.title,
                     channel: t.channel,
                     format: t.format,
+                    copy: (t.copy ?? undefined) as never,
                     priority: i,
                   })),
                 },
