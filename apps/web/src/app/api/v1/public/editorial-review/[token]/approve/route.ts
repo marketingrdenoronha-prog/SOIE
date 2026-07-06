@@ -1,6 +1,7 @@
 import { prisma } from "@soie/db";
 import { approveInput } from "@soie/contracts";
 import { ok, handle, Errors } from "@/server/http";
+import { appendHistory } from "@/server/production-stage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +17,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     if (!link || link.status === "revoked") throw Errors.notFound("Link");
     const s = link.strategy;
     const now = new Date();
+    const authorName = input.authorName ?? "Cliente";
+    const history = appendHistory(s.stageHistory, {
+      from: s.productionStage,
+      to: "approved",
+      at: now.toISOString(),
+      byId: null,
+      byName: authorName,
+      note: `Cliente aprovou a linha editorial V${s.version}`,
+    });
 
     await prisma.$transaction([
       prisma.editorialReviewComment.create({
@@ -23,12 +33,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
           organizationId: s.organizationId,
           strategyId: s.id,
           decision: "approve",
-          authorName: input.authorName ?? "Cliente",
+          authorName,
         },
       }),
       prisma.editorialStrategy.update({
         where: { id: s.id },
-        data: { status: "approved", approvedAt: now, changesRequestedAt: null },
+        data: {
+          status: "approved",
+          approvedAt: now,
+          changesRequestedAt: null,
+          productionStage: "approved",
+          stageHistory: history,
+        },
       }),
       ...(s.clientId
         ? [prisma.client.update({ where: { id: s.clientId }, data: { activeStrategyId: s.id } })]
