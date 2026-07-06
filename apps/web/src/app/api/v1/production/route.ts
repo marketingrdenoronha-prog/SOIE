@@ -59,6 +59,10 @@ export async function GET(req: Request) {
             format: t.format,
             copy: t.copy,
             microthemes: t.microthemes,
+            strategicObjective: t.strategicObjective,
+            hook: t.hook,
+            cta: t.cta,
+            productionNotes: t.productionNotes,
             deliverable: t.deliverable
               ? {
                   id: t.deliverable.id,

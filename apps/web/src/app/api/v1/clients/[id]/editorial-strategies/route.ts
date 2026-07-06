@@ -5,12 +5,24 @@ import { ok, handle, Errors } from "@/server/http";
 import { runAgent } from "@/server/ai-runtime";
 import { assembleProjectContext } from "@/server/project-context";
 import { resolveDefaultProjectId } from "@/server/client-scope";
+import { coerceTheme, type GenerationContext } from "@/server/editorial-content";
+import { toFormatKey } from "@/lib/editorial-format";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const createInput = z.object({
   brief: z.string().max(4000).optional(),
+  objective: z.string().max(500).optional(),
+  observations: z.string().max(4000).optional(),
+  formatCounts: z
+    .object({
+      video: z.number().int().min(0).max(50).optional(),
+      motion: z.number().int().min(0).max(50).optional(),
+      carrossel: z.number().int().min(0).max(50).optional(),
+      estatico: z.number().int().min(0).max(50).optional(),
+    })
+    .optional(),
 });
 
 /** GET /clients/:id/editorial-strategies
@@ -74,10 +86,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       version: nextVersion,
       parentStrategyId: previous?.id,
       clientFeedback: feedback || undefined,
-      brief: [input.brief, feedback ? `Feedback do cliente na versão anterior:\n${feedback}` : ""]
+      objective: input.objective,
+      observations: input.observations,
+      formatCounts: input.formatCounts,
+      brief: [input.brief, input.observations, feedback ? `Feedback do cliente na versão anterior:\n${feedback}` : ""]
         .filter(Boolean)
         .join("\n\n"),
     }, context);
+
+    // Cada tema sai PRONTO PARA PRODUÇÃO: coage/valida a saída (real ou demo)
+    // para o shape padronizado, preenchendo faltas com profundidade.
+    const genCtx: GenerationContext = {
+      brand: project.brand.name,
+      niche: project.brand.positioning ?? client.name,
+      objective: input.objective,
+      observations: input.observations,
+    };
+    let themeIndex = 0;
 
     const strategy = await prisma.editorialStrategy.create({
       data: {
@@ -106,14 +131,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
                 organizationId: org,
                 name: cat.name,
                 themes: {
-                  create: (cat.themes ?? []).map((t, i) => ({
-                    organizationId: org,
-                    title: t.title,
-                    channel: t.channel,
-                    format: t.format,
-                    copy: (t.copy ?? undefined) as never,
-                    priority: i,
-                  })),
+                  create: (cat.themes ?? []).map((raw) => {
+                    const t = coerceTheme(raw, genCtx, themeIndex);
+                    const priority = themeIndex;
+                    themeIndex += 1;
+                    return {
+                      organizationId: org,
+                      title: t.title,
+                      channel: t.channel,
+                      format: t.format,
+                      copy: t.copy as never,
+                      strategicObjective: t.strategicObjective,
+                      hook: t.hook,
+                      cta: t.cta,
+                      productionNotes: t.productionNotes,
+                      priority,
+                    };
+                  }),
                 },
               })),
             },

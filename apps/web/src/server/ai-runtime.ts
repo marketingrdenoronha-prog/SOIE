@@ -54,7 +54,7 @@ const OUTPUT_SCHEMA: Partial<Record<AgentKey, string>> = {
   language:
     '{"tone":object,"formality":"low"|"medium"|"high","emojisPolicy":object,"do":string[],"dont":string[],"examples":string[],"archetypes":[{"archetype":string,"weight":0-1,"rationale":string}],"vocabulary":[{"kind":string,"term":string,"note":string}],"confidence":"high"|"medium"|"low"}',
   planning:
-    '{"positioning":string,"pillars":string[],"objectives":object,"rationale":string,"lines":[{"name":string,"objective":"authority"|"trust"|"educate"|"reduce_objection"|"attract"|"identify"|"position"|"desire"|"relationship"|"convert","funnelStage":"tofu"|"mofu"|"bofu","platforms":string[],"categories":[{"name":string,"themes":[{"title":string}]}]}],"confidence":"high"|"medium"|"low"}',
+    '{"positioning":string,"pillars":string[],"objectives":object,"rationale":string,"lines":[{"name":string,"objective":"authority"|"trust"|"educate"|"reduce_objection"|"attract"|"identify"|"position"|"desire"|"relationship"|"convert","funnelStage":"tofu"|"mofu"|"bofu","platforms":string[],"categories":[{"name":string,"themes":[{"title":string,"strategicObjective":string,"channel":string,"format":"Vídeo"|"Motion"|"Carrossel"|"Estático","hook":string,"cta":string,"productionNotes":string,"copy":{"format":"video"|"motion"|"carrossel"|"estatico","estimatedDuration":string,"sections":[{"label":string,"text":string}],"slides":[{"title":string,"text":string}],"static":{"headline":string,"subheadline":string,"body":string,"cta":string,"designNotes":string}}}]}]}],"confidence":"high"|"medium"|"low"}',
 };
 
 async function resolvePrice(provider: string, model: string): Promise<ModelPrice> {

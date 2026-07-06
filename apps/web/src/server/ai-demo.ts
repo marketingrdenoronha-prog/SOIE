@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { AgentKey, Channel, DeliverableType } from "@soie/contracts";
+import { EDITORIAL_FORMATS, formatLabel, type FormatCounts } from "@/lib/editorial-format";
+import { buildDemoThemes, type GenerationContext } from "@/server/editorial-content";
 
 /**
  * Conteúdo estruturado de demonstração, por agente e por tipo de entrega.
@@ -22,6 +24,14 @@ function brandName(input: any): string {
 }
 function niche(input: any): string {
   return (input?.positioning || input?.nicho || input?.goal || "seu mercado").toString().slice(0, 80);
+}
+
+/** Distribuição de formatos pedida pelo usuário; default sensato quando ausente. */
+function resolveCounts(raw: any): FormatCounts {
+  const n = (v: any) => Math.max(0, Math.min(50, Math.floor(Number(v) || 0)));
+  const c = { video: n(raw?.video), motion: n(raw?.motion), carrossel: n(raw?.carrossel), estatico: n(raw?.estatico) };
+  if (c.video + c.motion + c.carrossel + c.estatico === 0) return { video: 2, motion: 1, carrossel: 2, estatico: 1 };
+  return c;
 }
 
 export function demoAgentOutput(key: AgentKey, input: any): Record<string, unknown> {
@@ -107,85 +117,37 @@ export function demoAgentOutput(key: AgentKey, input: any): Record<string, unkno
         confidence: "medium",
       };
 
-    case "planning":
+    case "planning": {
+      const ctx: GenerationContext = {
+        brand,
+        niche: nk,
+        objective: typeof input?.objective === "string" ? input.objective : undefined,
+        observations: typeof input?.observations === "string" ? input.observations : (typeof input?.brief === "string" ? input.brief : undefined),
+      };
+      const counts = resolveCounts(input?.formatCounts);
+      const themes = buildDemoThemes(ctx, counts);
+      // Agrupa os temas por formato em categorias dentro de uma única linha.
+      const byFormat = EDITORIAL_FORMATS
+        .map((f) => ({ name: formatLabel(f.key), themes: themes.filter((t) => t.format === formatLabel(f.key)) }))
+        .filter((c) => c.themes.length > 0);
+      const total = themes.length;
       return {
         positioning: `${brand}: a escolha segura em ${nk}, para quem quer resultado sem dor de cabeça.`,
         pillars: ["Autoridade (educar sobre o tema)", "Prova (cases e bastidores)", "Conexão (dia a dia e valores)", "Conversão (oferta e CTA)"],
-        objectives: { alcance: "crescer topo de funil com vídeo curto", autoridade: "1 conteúdo educativo/semana", conversao: "1 oferta clara/semana" },
-        rationale: "Distribuição 40% autoridade, 25% prova, 20% conexão, 15% conversão — constrói confiança antes de pedir a venda.",
+        objectives: ctx.objective ? { objetivo: ctx.objective, total } : { total, foco: "autoridade + conversão" },
+        rationale: `Distribuição pronta para produção: ${byFormat.map((c) => `${c.themes.length} ${c.name}`).join(", ")}. Cada conteúdo já sai com gancho, copy completa, CTA e observações de produção.`,
         confidence: "medium",
         lines: [
           {
-            name: "Autoridade",
+            name: "Linha Editorial",
             objective: "authority",
             funnelStage: "tofu",
-            platforms: ["instagram", "tiktok"],
-            categories: [
-              {
-                name: "Mitos e verdades",
-                themes: [
-                  {
-                    title: `3 erros comuns em ${nk}`,
-                    channel: "instagram",
-                    format: "Carrossel",
-                    copy: [
-                      `Todo mundo em ${nk} comete estes 3 erros.`,
-                      `Erro 1: decidir no achismo, sem dado.`,
-                      `Erro 2: copiar o concorrente em vez de olhar o próprio cliente.`,
-                      `Erro 3: parar de aparecer quando as vendas chegam.`,
-                      `Quer evitar os três? Chama a ${brand} no link da bio.`,
-                    ],
-                  },
-                  {
-                    title: "O que ninguém te conta antes de contratar",
-                    channel: "instagram",
-                    format: "Estático",
-                    copy: `Ninguém te conta, mas o problema raramente é o produto.\n\nÉ a estrutura por trás dele.\n\nA ${brand} resolve a estrutura pra você focar no que importa: vender.`,
-                  },
-                ],
-              },
-            ],
-          },
-          {
-            name: "Prova",
-            objective: "trust",
-            funnelStage: "mofu",
             platforms: ["instagram"],
-            categories: [
-              {
-                name: "Cases",
-                themes: [
-                  {
-                    title: "Antes e depois de um cliente real",
-                    channel: "instagram",
-                    format: "Reels",
-                    copy: `Antes: perdido, sem previsibilidade.\n\nDepois de 30 dias com a ${brand}: processo redondo e resultado no painel.\n\nSalva esse post e vem ser o próximo case.`,
-                  },
-                ],
-              },
-            ],
-          },
-          {
-            name: "Conversão",
-            objective: "convert",
-            funnelStage: "bofu",
-            platforms: ["instagram", "meta_ads"],
-            categories: [
-              {
-                name: "Oferta",
-                themes: [
-                  {
-                    title: "Chamada com garantia e próximo passo",
-                    channel: "instagram",
-                    format: "Estático",
-                    copy: `Chega de adiar.\n\nCom a ${brand} você começa hoje, com garantia.\n\nToca no link da bio e dá o próximo passo. 🚀`,
-                  },
-                ],
-              },
-            ],
+            categories: byFormat,
           },
         ],
       };
+    }
 
     default:
       return {
