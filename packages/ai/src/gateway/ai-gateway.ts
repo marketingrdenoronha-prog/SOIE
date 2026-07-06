@@ -46,22 +46,33 @@ export class AIGateway {
     const chain = [policy.preferred, ...policy.fallback];
     let lastError: unknown;
 
-    for (let i = 0; i < chain.length; i++) {
-      const target = chain[i]!;
-      const adapter = this.adapters[target.provider];
-      try {
-        const result = await adapter.complete({
-          ...req,
-          provider: target.provider,
-          model: target.model,
-        });
-        return i === 0
-          ? result
-          : { ...result, fallbackFrom: policy.preferred.provider };
-      } catch (err) {
-        lastError = err;
-        const retryable = err instanceof ProviderError ? err.retryable : true;
-        if (!retryable) break;
+    // Up to two passes over the chain: a transient 429/5xx/timeout on the only
+    // configured provider shouldn't immediately degrade the caller (which in
+    // the web runtime falls back to demo content). The second pass waits a
+    // short backoff first.
+    for (let pass = 0; pass < 2; pass++) {
+      if (pass > 0) await sleep(1500);
+      for (let i = 0; i < chain.length; i++) {
+        const target = chain[i]!;
+        const adapter = this.adapters[target.provider];
+        try {
+          const result = await adapter.complete({
+            ...req,
+            provider: target.provider,
+            model: target.model,
+          });
+          return i === 0
+            ? result
+            : { ...result, fallbackFrom: policy.preferred.provider };
+        } catch (err) {
+          lastError = err;
+          const retryable = err instanceof ProviderError ? err.retryable : true;
+          // Non-retryable (bad key, invalid request): retrying won't change
+          // anything — abort both loops.
+          if (!retryable) {
+            throw lastError;
+          }
+        }
       }
     }
     throw lastError ?? new Error("AIGateway: all providers failed");
@@ -70,4 +81,8 @@ export class AIGateway {
   async embed(req: EmbeddingRequest & { provider: AIProvider }): Promise<EmbeddingResult> {
     return this.adapters[req.provider].embed(req);
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

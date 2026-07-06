@@ -73,8 +73,13 @@ export async function produceDeliverable(p: ProduceParams): Promise<ProducedDeli
       : format.instruction,
   );
 
-  const evaluated = await run("evaluator", "evaluate", produced.output);
-  await run("critic", "critique", produced.output);
+  // Evaluator and critic both judge the same produced output and don't feed
+  // each other — running them concurrently removes a full serial LLM round-trip
+  // from every piece (the dominant latency in produce-all).
+  const [evaluated] = await Promise.all([
+    run("evaluator", "evaluate", produced.output),
+    run("critic", "critique", produced.output),
+  ]);
 
   const evaluationScore = extractScore(evaluated.output);
   const costUsd = steps.reduce((s, x) => s + x.costUsd, 0);

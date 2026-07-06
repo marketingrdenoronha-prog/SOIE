@@ -93,14 +93,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     // Cria o dossier em status "generating" (a UI já pode mostrar spinner).
-    const priorCount = await prisma.strategicDossier.count({
+    // Guard de double-submit: dois cliques em "Finalizar" não podem disparar
+    // duas pesquisas concorrentes (8 chamadas de IA e dois dossiês).
+    const latestDossier = await prisma.strategicDossier.findFirst({
       where: { organizationId: org, clientId: client.id },
+      orderBy: { version: "desc" },
+      select: { version: true, status: true, createdAt: true },
     });
+    if (
+      latestDossier?.status === "generating" &&
+      Date.now() - latestDossier.createdAt.getTime() < 3 * 60 * 1000
+    ) {
+      throw Errors.badRequest("Um dossiê já está sendo gerado para este cliente. Aguarde alguns instantes.");
+    }
     const dossier = await prisma.strategicDossier.create({
       data: {
         organizationId: org,
         clientId: client.id,
-        version: priorCount + 1,
+        version: (latestDossier?.version ?? 0) + 1,
         status: "generating",
       },
     });
@@ -113,6 +123,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     });
 
     // ── Pesquisa automática (4 agentes em paralelo). Cada um isolado.
+    // Cada agente recebe, além do contexto geral, a seção do onboarding que é
+    // matéria-prima direta dele: o que o cliente declarou vale mais do que o
+    // que o modelo inferiria do zero.
     const context = await assembleProjectContext(org, project.id);
     const brief = payload.goals?.primaryObjective ?? undefined;
     const agentInput = {
@@ -123,10 +136,38 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     };
 
     const results = await Promise.allSettled([
-      runAgent("market", agentInput, context),
-      runAgent("competition", agentInput, context),
-      runAgent("persona", agentInput, context),
-      runAgent("language", { ...agentInput, samples: payload.voice?.referenceExamples }, context),
+      runAgent(
+        "market",
+        { ...agentInput, offer: payload.offer, goals: payload.goals, identity: payload.identity },
+        context,
+      ),
+      runAgent(
+        "competition",
+        {
+          ...agentInput,
+          knownCompetitors: payload.competition?.competitors,
+          differentiators: payload.competition?.differentiators,
+        },
+        context,
+      ),
+      runAgent(
+        "persona",
+        { ...agentInput, icp: payload.icp, offer: payload.offer },
+        context,
+      ),
+      runAgent(
+        "language",
+        {
+          ...agentInput,
+          samples: payload.voice?.referenceExamples,
+          tonePreferences: payload.voice?.tone,
+          formalityLevel: payload.voice?.formalityLevel,
+          doList: payload.voice?.doList,
+          dontList: payload.voice?.dontList,
+          referenceProfiles: payload.voice?.referenceProfiles,
+        },
+        context,
+      ),
     ]);
 
     const [marketRes, competitionRes, personaRes, languageRes] = results;
@@ -134,7 +175,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const sources: Array<{ kind: string; id?: string; error?: string }> = [];
 
     // Cria Research umbrella para market+competition (padrão V1).
-    let research;
+    let research: { id: string } | undefined;
     try {
       research = await prisma.research.create({
         data: {
@@ -144,7 +185,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       });
     } catch (e) { errors.push(`research: ${e instanceof Error ? e.message : String(e)}`); }
 
-    if (marketRes.status === "fulfilled" && research) {
+    // Persistência dos 4 artefatos em paralelo — são independentes entre si e
+    // cada bloco isola a própria falha em `sources` (nenhum derruba os demais).
+    const persistMarket = async () => {
+      if (marketRes.status === "rejected") {
+        sources.push({ kind: "marketAnalysis", error: String(marketRes.reason) });
+        return;
+      }
+      if (!research) return;
       const m = marketRes.value;
       try {
         const created = await prisma.marketAnalysis.create({
@@ -157,26 +205,30 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         });
         sources.push({ kind: "marketAnalysis", id: created.id });
       } catch (e) { sources.push({ kind: "marketAnalysis", error: String(e) }); }
-    } else if (marketRes.status === "rejected") {
-      sources.push({ kind: "marketAnalysis", error: String(marketRes.reason) });
-    }
+    };
 
-    if (competitionRes.status === "fulfilled" && research) {
+    const persistCompetition = async () => {
+      if (competitionRes.status === "rejected") {
+        sources.push({ kind: "competitors", error: String(competitionRes.reason) });
+        return;
+      }
+      if (!research) return;
       const c = competitionRes.value;
       const rows = (c.competitors ?? []).map((x: any) => ({
         organizationId: org, projectId: project.id, researchId: research!.id,
         name: x.name, url: x.url, positioning: x.positioning,
         strengths: x.strengths ?? [], weaknesses: x.weaknesses ?? [],
       }));
-      if (rows.length > 0) {
-        try { await prisma.competitor.createMany({ data: rows }); sources.push({ kind: "competitors", id: String(rows.length) }); }
-        catch (e) { sources.push({ kind: "competitors", error: String(e) }); }
-      }
-    } else if (competitionRes.status === "rejected") {
-      sources.push({ kind: "competitors", error: String(competitionRes.reason) });
-    }
+      if (rows.length === 0) return;
+      try { await prisma.competitor.createMany({ data: rows }); sources.push({ kind: "competitors", id: String(rows.length) }); }
+      catch (e) { sources.push({ kind: "competitors", error: String(e) }); }
+    };
 
-    if (personaRes.status === "fulfilled") {
+    const persistPersona = async () => {
+      if (personaRes.status === "rejected") {
+        sources.push({ kind: "persona", error: String(personaRes.reason) });
+        return;
+      }
       const p = personaRes.value;
       try {
         const created = await prisma.persona.create({
@@ -196,11 +248,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         });
         sources.push({ kind: "persona", id: created.id });
       } catch (e) { sources.push({ kind: "persona", error: String(e) }); }
-    } else if (personaRes.status === "rejected") {
-      sources.push({ kind: "persona", error: String(personaRes.reason) });
-    }
+    };
 
-    if (languageRes.status === "fulfilled") {
+    const persistVoice = async () => {
+      if (languageRes.status === "rejected") {
+        sources.push({ kind: "brandVoice", error: String(languageRes.reason) });
+        return;
+      }
       const l = languageRes.value;
       try {
         const created = await prisma.brandVoice.create({
@@ -213,26 +267,28 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           },
         });
         sources.push({ kind: "brandVoice", id: created.id });
+        const extras: Promise<unknown>[] = [];
         if (l.archetypes?.length) {
-          await prisma.archetype.createMany({
+          extras.push(prisma.archetype.createMany({
             data: (l.archetypes as any[]).map((a) => ({
               organizationId: org, brandId: project.brand.id,
               archetype: a.archetype, weight: a.weight ?? 0.5, rationale: a.rationale,
             })),
-          });
+          }));
         }
         if (l.vocabulary?.length) {
-          await prisma.vocabulary.createMany({
+          extras.push(prisma.vocabulary.createMany({
             data: (l.vocabulary as any[]).map((v) => ({
               organizationId: org, brandId: project.brand.id,
               kind: v.kind, term: v.term, note: v.note,
             })),
-          });
+          }));
         }
+        await Promise.all(extras);
       } catch (e) { sources.push({ kind: "brandVoice", error: String(e) }); }
-    } else if (languageRes.status === "rejected") {
-      sources.push({ kind: "brandVoice", error: String(languageRes.reason) });
-    }
+    };
+
+    await Promise.all([persistMarket(), persistCompetition(), persistPersona(), persistVoice()]);
 
     // Consolida o snapshot no dossier — a UI lê `summary` para exibir.
     const summary = {

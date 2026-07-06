@@ -45,6 +45,10 @@ export class AgentRunner {
             { role: "user", content: userPrompt },
           ],
           temperature: 0.4,
+          // Editorial output is a large JSON document (full copy per theme);
+          // without an explicit budget some providers default far too low and
+          // truncate mid-JSON.
+          maxTokens: 8192,
           // Ask providers that support it to emit strict JSON, so tryParse
           // doesn't have to salvage markdown-fenced or prose-wrapped output.
           responseFormat: "json",
@@ -73,13 +77,10 @@ export class AgentRunner {
   }
 
   private buildUserPrompt(req: AgentRequest): string {
-    // Real implementation composes template + variables + retrieved context
-    // within a token budget (Phase 8.6). Kept explicit here for clarity.
-    return JSON.stringify(
-      { input: req.input, context: req.context, constraints: req.constraints },
-      null,
-      2,
-    );
+    // Compact JSON: pretty-printing the assembled context inflated input
+    // tokens ~25% for zero model benefit. The context assembler is responsible
+    // for keeping each section bounded (slices/caps at assembly time).
+    return JSON.stringify({ input: req.input, context: req.context, constraints: req.constraints });
   }
 
   private tryParse(

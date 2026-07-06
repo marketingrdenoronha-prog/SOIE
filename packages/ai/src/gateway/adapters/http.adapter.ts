@@ -16,6 +16,16 @@ import { estimateTokens } from "./base.adapter.js";
  * failing key surfaces as a retryable ProviderError so the gateway's fallback
  * chain can move on to the next provider.
  */
+/** Hard cap per provider HTTP call. Without it a hung connection holds the
+ * serverless function until the platform's maxDuration kills it — with it the
+ * gateway's fallback chain gets a chance to answer from another provider. */
+const REQUEST_TIMEOUT_MS = 120_000;
+
+/** Default output budget when the caller doesn't set one. Editorial-line
+ * generation returns large JSON documents (full copy per theme), so a small
+ * cap (e.g. Anthropic's old 2048 default here) silently truncated output. */
+export const DEFAULT_MAX_OUTPUT_TOKENS = 8192;
+
 abstract class HttpAdapter implements ProviderAdapter {
   abstract readonly provider: AIProvider;
   constructor(protected readonly apiKey: string) {}
@@ -33,9 +43,15 @@ abstract class HttpAdapter implements ProviderAdapter {
         method: "POST",
         headers: { "content-type": "application/json", ...headers },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
     } catch (err) {
-      throw new ProviderError(this.provider, `network error: ${String(err)}`, true);
+      const timedOut = err instanceof Error && err.name === "TimeoutError";
+      throw new ProviderError(
+        this.provider,
+        timedOut ? `timeout after ${REQUEST_TIMEOUT_MS}ms` : `network error: ${String(err)}`,
+        true,
+      );
     }
     if (!res.ok) {
       const retryable = res.status === 429 || res.status >= 500;
@@ -120,7 +136,7 @@ export class AnthropicHttpAdapter extends HttpAdapter {
     const data = await this.post(
       "https://api.anthropic.com/v1/messages",
       { "x-api-key": req.apiKey ?? this.apiKey, "anthropic-version": "2023-06-01" },
-      { model: req.model, max_tokens: req.maxTokens ?? 2048, system, messages },
+      { model: req.model, max_tokens: req.maxTokens ?? DEFAULT_MAX_OUTPUT_TOKENS, system, messages },
     );
     return {
       provider: this.provider,

@@ -122,7 +122,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         });
         produced++;
       } catch {
-        await prisma.deliverable.update({ where: { id: deliverable.id }, data: { status: "draft" } });
+        // Desfaz o placeholder e destrava o tema — senão o tema fica linkado a
+        // um deliverable vazio para sempre e o re-clique nunca o reproduz.
+        await prisma.theme.update({ where: { id: theme.id }, data: { deliverableId: null } }).catch(() => {});
+        await prisma.deliverable.delete({ where: { id: deliverable.id } }).catch(() => {});
         failed++;
       }
     });

@@ -58,25 +58,27 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const client = await ensureClient(org, clientId);
     const projectId = await resolveDefaultProjectId(clientId, org);
 
-    const project = await prisma.project.findFirst({
-      where: { id: projectId, organizationId: org },
-      include: { brand: true, personas: { include: { pains: true, desires: true } } },
-    });
+    // As três leituras são independentes — uma onda paralela em vez de três
+    // round-trips sequenciais ao banco (relevante em lambda + Neon).
+    const [project, previous, context] = await Promise.all([
+      prisma.project.findFirst({
+        where: { id: projectId, organizationId: org },
+        include: { brand: true, personas: { include: { pains: true, desires: true } } },
+      }),
+      prisma.editorialStrategy.findFirst({
+        where: { organizationId: org, clientId },
+        orderBy: [{ version: "desc" }, { createdAt: "desc" }],
+        include: { reviewComments: { orderBy: { createdAt: "desc" }, take: 3 } },
+      }),
+      assembleProjectContext(org, projectId),
+    ]);
     if (!project) throw Errors.notFound("Projeto");
-
-    const previous = await prisma.editorialStrategy.findFirst({
-      where: { organizationId: org, clientId },
-      orderBy: [{ version: "desc" }, { createdAt: "desc" }],
-      include: { reviewComments: { orderBy: { createdAt: "desc" }, take: 3 } },
-    });
 
     const nextVersion = (previous?.version ?? 0) + 1;
     const feedback = previous?.reviewComments
       ?.filter((c) => c.decision === "request_changes" && c.comment)
       .map((c) => c.comment)
       .join("\n");
-
-    const context = await assembleProjectContext(org, projectId);
     const result = await runAgent("planning", {
       brand: project.brand.name,
       client: client.name,

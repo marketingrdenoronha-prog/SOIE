@@ -70,6 +70,24 @@ async function resolvePrice(provider: string, model: string): Promise<ModelPrice
   };
 }
 
+/** Prices change rarely but every agent call needs them — cache per lambda
+ * instance with a TTL so a warm function stops re-querying the price book on
+ * each generation (produce-all alone runs dozens of agent calls). */
+const PRICE_TTL_MS = 10 * 60 * 1000;
+let priceCache: { at: number; prices: Map<string, ModelPrice> } | null = null;
+
+async function getPrices(): Promise<Map<string, ModelPrice>> {
+  if (priceCache && Date.now() - priceCache.at < PRICE_TTL_MS) return priceCache.prices;
+  const entries = await Promise.all(
+    PRICEABLE_MODELS.map(async (key) => {
+      const [p, m] = key.split(":") as [string, string];
+      return [key, await resolvePrice(p, m)] as const;
+    }),
+  );
+  priceCache = { at: Date.now(), prices: new Map(entries) };
+  return priceCache.prices;
+}
+
 async function resolveAgent(key: AgentKey): Promise<AgentDefinition> {
   const schema = OUTPUT_SCHEMA[key];
   const jsonRule = schema
@@ -190,11 +208,7 @@ export async function runAgent(key: AgentKey, input: any, context?: Record<strin
 }
 
 async function makeRunner(): Promise<AgentRunner> {
-  const cache = new Map<string, ModelPrice>();
-  for (const key of PRICEABLE_MODELS) {
-    const [p, m] = key.split(":") as [string, string];
-    cache.set(key, await resolvePrice(p, m));
-  }
+  const cache = await getPrices();
   return new AgentRunner({
     gateway,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
