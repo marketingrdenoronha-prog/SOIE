@@ -143,7 +143,7 @@ function StrategyCard({ s, submitBusy, onSubmit }: { s: any; submitBusy: boolean
               disabled={submitBusy}
               className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-strong disabled:opacity-50 dark:text-[#00390d]"
             >
-              {submitBusy ? "Enviando…" : s.status === "draft" ? "Enviar para aprovação" : "Reenviar"}
+              {submitBusy ? "Enviando…" : s.status === "draft" ? "Enviar para Cliente" : "Reenviar"}
             </button>
           )}
         </div>

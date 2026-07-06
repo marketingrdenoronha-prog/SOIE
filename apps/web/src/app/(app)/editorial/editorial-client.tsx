@@ -148,7 +148,7 @@ function DropModal({ theme, projectId, onClose }: { theme: string; projectId: st
           <div className="mt-5 space-y-3">
             <p className="text-sm text-emerald-600">Entrega gerada com sucesso.</p>
             <div className="flex gap-2">
-              <a href="/deliverables" className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:opacity-90">Ver em Entregas</a>
+              <a href="/production" className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:opacity-90">Ver na Produção</a>
               <a href={reviewUrl} target="_blank" className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface">Abrir link do cliente ↗</a>
             </div>
           </div>

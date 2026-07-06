@@ -38,7 +38,7 @@ export async function GET(req: Request) {
       ...brands.map((b) => ({ kind: "Marca", id: b.id, label: b.name, href: "/clients" })),
       ...projects.map((p) => ({ kind: "Projeto", id: p.id, label: p.name, href: "/clients" })),
       ...deliverables.map((d) => ({
-        kind: "Entrega", id: d.id, label: d.title, sub: `${d.channel} · ${d.type}`, href: "/deliverables",
+        kind: "Entrega", id: d.id, label: d.title, sub: `${d.channel} · ${d.type}`, href: "/production",
       })),
     ];
     return ok({ q, results });
