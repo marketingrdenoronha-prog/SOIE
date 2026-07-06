@@ -741,6 +741,9 @@ model Theme {
   // editorial — o operador não precisa reescolher no momento da produção.
   channel        String?
   format         String?
+  // V2: copy pronta do tema, já no documento que vai para o cliente aprovar.
+  // String (estático/reels) OU array de strings (carrossel, uma por TELA).
+  copy           Json?
   // FK inversa: quando a produção automática cria um Deliverable para este
   // tema, guarda o id para evitar duplicação e permitir navegação. @unique
   // porque cada tema gera no máximo 1 peça (a produção reusa se re-clicada).

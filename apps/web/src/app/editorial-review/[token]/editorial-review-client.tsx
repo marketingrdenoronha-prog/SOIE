@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { LogoMark } from "@/components/logo";
 import { arr, text } from "@/lib/render";
+import { EditorialDoc } from "@/components/editorial-doc";
 
 interface ReviewData {
   token: string;
@@ -141,31 +142,8 @@ export function EditorialReviewClient({ token }: { token: string }) {
           )}
           {text(data.strategy.rationale) && <Field label="Racional">{text(data.strategy.rationale)}</Field>}
 
-          <Field label="Eixos e temas">
-            <div className="space-y-3">
-              {data.strategy.lines.map((line, i) => (
-                <div key={i} className="rounded-lg border border-border p-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-medium">{text(line.name)}</p>
-                    <span className="rounded-md bg-brand/10 px-2 py-0.5 text-xs text-brand">{text(line.objective)}</span>
-                    <span className="rounded-md bg-border/50 px-2 py-0.5 text-xs">{text(line.funnelStage)}</span>
-                  </div>
-                  {line.categories.map((c, j) => (
-                    <div key={j} className="mt-2">
-                      <p className="text-sm font-medium">{text(c.name)}</p>
-                      <div className="mt-1 flex flex-wrap gap-1.5">
-                        {c.themes.map((t, k) => (
-                          <span key={k} className="rounded-md border border-border px-2 py-0.5 text-xs">
-                            {text(t.title)}
-                            {(t.channel || t.format) ? <span className="text-muted"> · {text(t.channel)} {text(t.format)}</span> : null}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
+          <Field label="Conteúdos propostos">
+            <EditorialDoc lines={data.strategy.lines as any} />
           </Field>
 
           {data.history.length > 0 && (

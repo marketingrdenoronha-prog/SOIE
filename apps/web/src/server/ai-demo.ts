@@ -121,8 +121,29 @@ export function demoAgentOutput(key: AgentKey, input: any): Record<string, unkno
             funnelStage: "tofu",
             platforms: ["instagram", "tiktok"],
             categories: [
-              { name: "Mitos e verdades", themes: [{ title: `3 erros comuns em ${nk}` }, { title: "O que ninguém te conta antes de contratar" }] },
-              { name: "Como funciona", themes: [{ title: "Passo a passo do nosso processo" }] },
+              {
+                name: "Mitos e verdades",
+                themes: [
+                  {
+                    title: `3 erros comuns em ${nk}`,
+                    channel: "instagram",
+                    format: "Carrossel",
+                    copy: [
+                      `Todo mundo em ${nk} comete estes 3 erros.`,
+                      `Erro 1: decidir no achismo, sem dado.`,
+                      `Erro 2: copiar o concorrente em vez de olhar o próprio cliente.`,
+                      `Erro 3: parar de aparecer quando as vendas chegam.`,
+                      `Quer evitar os três? Chama a ${brand} no link da bio.`,
+                    ],
+                  },
+                  {
+                    title: "O que ninguém te conta antes de contratar",
+                    channel: "instagram",
+                    format: "Estático",
+                    copy: `Ninguém te conta, mas o problema raramente é o produto.\n\nÉ a estrutura por trás dele.\n\nA ${brand} resolve a estrutura pra você focar no que importa: vender.`,
+                  },
+                ],
+              },
             ],
           },
           {
@@ -131,7 +152,17 @@ export function demoAgentOutput(key: AgentKey, input: any): Record<string, unkno
             funnelStage: "mofu",
             platforms: ["instagram"],
             categories: [
-              { name: "Cases", themes: [{ title: "Antes e depois de um cliente real" }, { title: "Bastidores de uma entrega" }] },
+              {
+                name: "Cases",
+                themes: [
+                  {
+                    title: "Antes e depois de um cliente real",
+                    channel: "instagram",
+                    format: "Reels",
+                    copy: `Antes: perdido, sem previsibilidade.\n\nDepois de 30 dias com a ${brand}: processo redondo e resultado no painel.\n\nSalva esse post e vem ser o próximo case.`,
+                  },
+                ],
+              },
             ],
           },
           {
@@ -140,7 +171,17 @@ export function demoAgentOutput(key: AgentKey, input: any): Record<string, unkno
             funnelStage: "bofu",
             platforms: ["instagram", "meta_ads"],
             categories: [
-              { name: "Oferta", themes: [{ title: "Chamada com garantia e próximo passo" }] },
+              {
+                name: "Oferta",
+                themes: [
+                  {
+                    title: "Chamada com garantia e próximo passo",
+                    channel: "instagram",
+                    format: "Estático",
+                    copy: `Chega de adiar.\n\nCom a ${brand} você começa hoje, com garantia.\n\nToca no link da bio e dá o próximo passo. 🚀`,
+                  },
+                ],
+              },
             ],
           },
         ],

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { arr, text } from "@/lib/render";
+import { EditorialDoc } from "@/components/editorial-doc";
 
 type Strategy = any;
 
@@ -171,29 +172,9 @@ function StrategyCard({ s, submitBusy, onSubmit }: { s: any; submitBusy: boolean
             </ul>
           </div>
         )}
-        <div className="space-y-3">
-          {s.editorialLines?.map((line: any) => (
-            <div key={line.id} className="rounded-lg border border-border p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="font-medium">{text(line.name)}</p>
-                <span className="rounded-md bg-brand/10 px-2 py-0.5 text-xs text-brand">{text(line.objective)}</span>
-                <span className="rounded-md bg-border/50 px-2 py-0.5 text-xs">{text(line.funnelStage)}</span>
-              </div>
-              {line.categories?.map((c: any) => (
-                <div key={c.id} className="mt-2">
-                  <p className="text-sm font-medium">{text(c.name)}</p>
-                  <div className="mt-1 flex flex-wrap gap-1.5">
-                    {c.themes?.map((t: any) => (
-                      <span key={t.id} className="rounded-md border border-border px-2 py-0.5 text-xs">
-                        {text(t.title)}
-                        {(t.channel || t.format) ? <span className="text-muted"> · {text(t.channel)} {text(t.format)}</span> : null}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ))}
+        <div>
+          <p className="label-caps mb-2 text-muted">Conteúdos propostos</p>
+          <EditorialDoc lines={s.editorialLines} />
         </div>
       </div>
     </article>

@@ -39,7 +39,7 @@ export const AGENT_OUTPUT_CONTRACTS: Partial<Record<AgentKey, string>> = {
   ].join("\n"),
 
   planning: [
-    "Tarefa: desenhar a linha editorial (estratégia de conteúdo) do projeto.",
+    "Tarefa: desenhar a linha editorial (estratégia de conteúdo) do projeto E JÁ ESCREVER a copy pronta de cada tema, no formato final que vai para o cliente aprovar.",
     "Retorne um JSON com exatamente estas chaves:",
     '- "positioning": string (posicionamento editorial em uma frase)',
     '- "pillars": array de strings (pilares de conteúdo)',
@@ -50,7 +50,15 @@ export const AGENT_OUTPUT_CONTRACTS: Partial<Record<AgentKey, string>> = {
     '    "objective": um destes: "authority"|"trust"|"educate"|"reduce_objection"|"attract"|"identify"|"position"|"desire"|"relationship"|"convert",',
     '    "funnelStage": "tofu"|"mofu"|"bofu",',
     '    "platforms": array de strings,',
-    '    "categories": array de { "name": string, "themes": array de { "title": string } }',
+    '    "categories": array de objetos { "name": string, "themes": array de temas }',
+    "Cada TEMA é um objeto com:",
+    '    "title": string (título/gancho do post),',
+    '    "channel": string (ex.: "instagram", "tiktok"),',
+    '    "format": string — um destes rótulos: "Estático" | "Carrossel" | "Reels" | "Vídeo" | "Motion" | "Story",',
+    '    "copy": a COPY PRONTA do post. Regras do campo copy:',
+    "        • Se format = \"Carrossel\": copy é um ARRAY de strings, uma por TELA (tela 1, tela 2, ...), na ordem.",
+    "        • Qualquer outro format: copy é uma STRING com o texto final do post (headline + corpo + CTA), com quebras de linha.",
+    "A copy deve estar no tom da marca, pronta para publicação — não descreva o que fazer, ESCREVA o conteúdo final. Gere entre 4 e 6 temas no total.",
   ].join("\n"),
 
   market: [

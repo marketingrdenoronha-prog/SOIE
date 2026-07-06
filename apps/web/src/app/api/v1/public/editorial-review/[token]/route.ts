@@ -48,7 +48,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
           platforms: l.platforms,
           categories: l.categories.map((c) => ({
             name: c.name,
-            themes: c.themes.map((t) => ({ title: t.title, channel: t.channel, format: t.format })),
+            themes: c.themes.map((t) => ({ title: t.title, channel: t.channel, format: t.format, copy: t.copy })),
           })),
         })),
       },
