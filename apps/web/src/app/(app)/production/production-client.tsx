@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
-import { SpecView } from "@/components/spec-view";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { ThemeContent } from "@/components/editorial-doc";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -15,6 +15,10 @@ interface Piece {
   format: string | null;
   copy: unknown;
   microthemes: unknown;
+  strategicObjective: string | null;
+  hook: string | null;
+  cta: string | null;
+  productionNotes: string | null;
   deliverable: {
     id: string;
     title: string;
@@ -377,7 +381,6 @@ function PiecesTab({ line }: { line: Line }) {
 
 function PieceRow({ p }: { p: Piece }) {
   const [open, setOpen] = useState(false);
-  const copy = normalizeCopy(p.copy);
   return (
     <div className="rounded-lg border border-border bg-surface">
       <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left">
@@ -386,33 +389,14 @@ function PieceRow({ p }: { p: Piece }) {
           <span className="block text-[11px] text-muted">{[p.channel, p.format].filter(Boolean).join(" · ") || "—"}</span>
         </span>
         <span className="flex items-center gap-2">
-          {p.deliverable ? <StatusChip status={p.deliverable.status} /> : <span className="rounded-full bg-border/60 px-2 py-0.5 text-[10px] text-muted">não produzida</span>}
+          {p.deliverable ? <StatusChip status={p.deliverable.status} /> : <span className="rounded-full bg-border/60 px-2 py-0.5 text-[10px] text-muted">a produzir</span>}
           <span className="text-muted">{open ? "▲" : "▼"}</span>
         </span>
       </button>
       {open && (
-        <div className="space-y-3 border-t border-border px-3 py-3 text-sm">
-          {p.deliverable?.brief && (
-            <div><p className="label-caps text-muted">Briefing</p><p className="mt-1">{p.deliverable.brief}</p></div>
-          )}
-          {copy.length > 0 && (
-            <div>
-              <p className="label-caps text-muted">Copy</p>
-              {copy.length === 1 ? <p className="mt-1 whitespace-pre-wrap">{copy[0]}</p> : (
-                <ol className="mt-1 list-decimal space-y-1 pl-4">{copy.map((c, i) => <li key={i} className="whitespace-pre-wrap">{c}</li>)}</ol>
-              )}
-            </div>
-          )}
-          {p.deliverable ? (
-            <div>
-              <p className="label-caps text-muted">Roteiro</p>
-              <div className="mt-1">
-                <ErrorBoundary><SpecView type={p.deliverable.type} spec={p.deliverable.spec} /></ErrorBoundary>
-              </div>
-            </div>
-          ) : (
-            <p className="text-xs text-muted">Peça ainda não produzida. Use “Iniciar produção” na etapa Aprovada.</p>
-          )}
+        <div className="border-t border-border px-3 py-3">
+          {/* Conteúdo pronto para produção vindo da Linha Editorial. */}
+          <ErrorBoundary><ThemeContent theme={p} /></ErrorBoundary>
         </div>
       )}
     </div>
@@ -473,11 +457,4 @@ function StatusChip({ status }: { status: string }) {
 
 function statusLabel(status: string): string {
   return ({ draft: "Rascunho", pending_client: "Aguardando cliente", approved: "Aprovada", changes_requested: "Ajuste pedido" } as Record<string, string>)[status] ?? status;
-}
-
-function normalizeCopy(copy: unknown): string[] {
-  if (copy == null) return [];
-  if (typeof copy === "string") return copy.trim() ? [copy] : [];
-  if (Array.isArray(copy)) return copy.map((c) => (typeof c === "string" ? c : JSON.stringify(c))).filter(Boolean);
-  return [];
 }

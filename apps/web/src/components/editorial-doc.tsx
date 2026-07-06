@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { arr, text } from "@/lib/render";
+import { isStructuredCopy, type StructuredCopy } from "@/lib/editorial-format";
 
 interface Line {
   name?: unknown;
@@ -13,57 +14,137 @@ export function flattenThemes(lines: Line[] | undefined): any[] {
 }
 
 /**
- * Renders an editorial line as the finished document the client approves:
- * numbered themes, each with its format and the ready copy (a single block for
- * static/reels, or one "TELA" per screen for carousel).
+ * Renders an editorial line as the finished, production-ready document the client
+ * approves: numbered contents, each with format, objetivo estratégico, copy
+ * completa (roteiro / slides / peça estática), gancho, CTA e observações de
+ * produção. Compatível com copy legada (string ou array de strings).
  */
 export function EditorialDoc({ lines }: { lines: Line[] | undefined }) {
   const themes = flattenThemes(lines);
   if (themes.length === 0) {
-    return <p className="text-sm text-muted">Esta versão ainda não tem temas com copy.</p>;
+    return <p className="text-sm text-muted">Esta versão ainda não tem conteúdos com copy.</p>;
   }
   return (
     <div className="space-y-6">
       {themes.map((t, i) => (
-        <ThemeBlock key={i} n={i + 1} theme={t} />
+        <article key={i} className="rounded-xl border border-border bg-elevated p-4">
+          <h3 className="text-base font-semibold">
+            <span className="text-muted">#{String(i + 1).padStart(2, "0")}</span> | {text(t?.title)}
+          </h3>
+          <ThemeContent theme={t} />
+        </article>
       ))}
     </div>
   );
 }
 
-function ThemeBlock({ n, theme }: { n: number; theme: any }) {
-  const num = String(n).padStart(2, "0");
+/** Renders one content's standard output (reused by the editorial doc, the
+ * client review page and the production side panel). */
+export function ThemeContent({ theme }: { theme: any }) {
   const format = text(theme?.format);
-  const copy = theme?.copy;
-  const isCarousel = Array.isArray(copy);
-
+  const channel = text(theme?.channel);
   return (
-    <article className="rounded-xl border border-border bg-elevated p-4">
-      <h3 className="text-base font-semibold">
-        <span className="text-muted">#{num}</span> | {text(theme?.title)}
-      </h3>
-      {(format || text(theme?.channel)) && (
+    <div className="space-y-3">
+      {(format || channel) && (
         <p className="mt-1 text-xs text-muted">
           {format && <span className="font-medium">Formato: {format}</span>}
-          {format && text(theme?.channel) ? " · " : ""}
-          {text(theme?.channel)}
+          {format && channel ? " · " : ""}
+          {channel}
         </p>
       )}
-
-      {isCarousel ? (
-        <div className="mt-3 space-y-2">
-          {(copy as any[]).map((screen, i) => (
-            <div key={i} className="rounded-lg border border-border bg-surface p-3">
-              <p className="label-caps text-brand">Tela {String(i + 1).padStart(2, "0")}</p>
-              <p className="mt-1 whitespace-pre-wrap text-sm">{text(screen)}</p>
-            </div>
-          ))}
-        </div>
-      ) : text(copy) ? (
-        <p className="mt-3 whitespace-pre-wrap text-sm">{text(copy)}</p>
-      ) : (
-        <p className="mt-3 text-sm text-muted">Sem copy gerada para este tema.</p>
+      {text(theme?.strategicObjective) && (
+        <Block label="Objetivo estratégico">{text(theme.strategicObjective)}</Block>
       )}
-    </article>
+
+      <div>
+        <p className="label-caps mb-1 text-muted">Copy completa</p>
+        <CopyBody copy={theme?.copy} hook={theme?.hook} cta={theme?.cta} />
+      </div>
+
+      {text(theme?.productionNotes) && (
+        <Block label="Observações para produção">{text(theme.productionNotes)}</Block>
+      )}
+    </div>
+  );
+}
+
+function CopyBody({ copy, hook, cta }: { copy: unknown; hook?: unknown; cta?: unknown }) {
+  if (isStructuredCopy(copy)) return <StructuredCopyView copy={copy} hook={hook} cta={cta} />;
+
+  // Legado: array = carrossel (uma tela por item); string = bloco único.
+  if (Array.isArray(copy)) {
+    return (
+      <div className="space-y-2">
+        {copy.map((screen, i) => (
+          <div key={i} className="rounded-lg border border-border bg-surface p-3">
+            <p className="label-caps text-brand">Tela {String(i + 1).padStart(2, "0")}</p>
+            <p className="mt-1 whitespace-pre-wrap text-sm">{text(screen)}</p>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (text(copy)) return <p className="whitespace-pre-wrap text-sm">{text(copy)}</p>;
+  return <p className="text-sm text-muted">Sem copy gerada para este conteúdo.</p>;
+}
+
+function StructuredCopyView({ copy, hook, cta }: { copy: StructuredCopy; hook?: unknown; cta?: unknown }) {
+  if (copy.format === "carrossel") {
+    const slides = copy.slides ?? [];
+    return (
+      <div className="space-y-2">
+        {slides.map((s, i) => (
+          <div key={i} className="rounded-lg border border-border bg-surface p-3">
+            <p className="label-caps text-brand">{s.title?.trim() ? s.title : `Tela ${String(i + 1).padStart(2, "0")}`}</p>
+            <p className="mt-1 whitespace-pre-wrap text-sm">{text(s.text)}</p>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (copy.format === "estatico") {
+    const s = copy.static;
+    return (
+      <div className="space-y-2 rounded-lg border border-border bg-surface p-3 text-sm">
+        {s?.headline && <p className="text-base font-semibold">{text(s.headline)}</p>}
+        {s?.subheadline && <p className="text-muted">{text(s.subheadline)}</p>}
+        {s?.body && <p className="whitespace-pre-wrap">{text(s.body)}</p>}
+        {s?.cta && <p className="font-medium text-brand">{text(s.cta)}</p>}
+        {s?.designNotes && <p className="text-xs text-muted">🎨 {text(s.designNotes)}</p>}
+      </div>
+    );
+  }
+
+  // vídeo / motion
+  const sections = copy.sections ?? [];
+  return (
+    <div className="space-y-2">
+      {copy.estimatedDuration && (
+        <span className="inline-block rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand">
+          Duração estimada: {text(copy.estimatedDuration)}
+        </span>
+      )}
+      <div className="space-y-2">
+        {sections.map((sec, i) => (
+          <div key={i} className="rounded-lg border border-border bg-surface p-3">
+            <p className="label-caps text-brand">{text(sec.label)}</p>
+            <p className="mt-1 whitespace-pre-wrap text-sm">{text(sec.text)}</p>
+          </div>
+        ))}
+      </div>
+      {sections.length === 0 && Boolean(text(hook) || text(cta)) ? (
+        <p className="whitespace-pre-wrap text-sm">{[text(hook), text(cta)].filter(Boolean).join("\n\n")}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function Block({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="label-caps text-muted">{label}</p>
+      <p className="mt-0.5 text-sm">{children}</p>
+    </div>
   );
 }
