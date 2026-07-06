@@ -676,11 +676,26 @@ model EditorialStrategy {
   objectives        Json       @default("{}")
   rationale         String?
   confidence        Confidence @default(medium)
-  // Fluxo: draft → pending_client → approved | changes_requested.
+  // Fluxo de aprovação do cliente: draft → pending_client → approved | changes_requested.
   status            String     @default("draft")
   submittedAt       DateTime?
   approvedAt        DateTime?
   changesRequestedAt DateTime?
+  // V3 — Esteira de Produção. Cada Linha Editorial (não a peça) é um card no
+  // Kanban de Produção. `productionStage` é a coluna da esteira, independente
+  // do `status` de aprovação do cliente:
+  //   null          → fora da esteira (rascunho ou devolvida ao Editorial)
+  //   client_review → Em Revisão do Cliente (após "Enviar para Cliente")
+  //   approved      → Aprovada (cliente aprovou)
+  //   design        → Designer / Audiovisual (produção das peças)
+  //   final_review  → Em Aprovação Final (revisão interna)
+  //   to_post       → A Postar (pronto para publicar)
+  productionStage   String?
+  // Responsável atual pela Linha Editorial na esteira (quem enviou/movimentou).
+  responsibleUserId String?    @db.Uuid
+  // Timeline append-only de movimentações. Nunca é apagada.
+  // [{ from, to, at, byId, byName, note }]
+  stageHistory      Json       @default("[]")
   createdAt         DateTime   @default(now())
 
   project         Project                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
