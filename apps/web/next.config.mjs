@@ -19,6 +19,16 @@ const nextConfig = {
     "*": ["**/libquery_engine-debian-openssl-3.0.x.so.node"],
   },
   eslint: { ignoreDuringBuilds: true },
+  // In `next dev` the workspace packages resolve to their TS source (the
+  // "development" export condition), whose ESM imports use explicit `.js`
+  // extensions. Map `.js` back to the TS source so dev can resolve them.
+  webpack: (config) => {
+    config.resolve.extensionAlias = {
+      ...(config.resolve.extensionAlias ?? {}),
+      ".js": [".ts", ".tsx", ".js", ".jsx"],
+    };
+    return config;
+  },
 };
 
 export default nextConfig;
