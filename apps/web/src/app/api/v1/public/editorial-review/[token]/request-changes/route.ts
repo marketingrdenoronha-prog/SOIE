@@ -1,6 +1,7 @@
 import { prisma } from "@soie/db";
 import { requestChangesInput } from "@soie/contracts";
 import { ok, handle, Errors } from "@/server/http";
+import { appendHistory } from "@/server/production-stage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +16,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     });
     if (!link || link.status === "revoked") throw Errors.notFound("Link");
     const s = link.strategy;
+    const authorName = input.authorName ?? "Cliente";
+    // Ajuste solicitado → a Linha Editorial SAI da esteira e retorna ao módulo
+    // Editorial (mesma linha, nunca outra). Ao reenviar, volta a "client_review".
+    const history = appendHistory(s.stageHistory, {
+      from: s.productionStage,
+      to: "editorial",
+      at: new Date().toISOString(),
+      byId: null,
+      byName: authorName,
+      note: `Cliente pediu ajuste: ${input.comment}`,
+    });
 
     await prisma.$transaction([
       prisma.editorialReviewComment.create({
@@ -23,12 +35,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
           strategyId: s.id,
           decision: "request_changes",
           comment: input.comment,
-          authorName: input.authorName ?? "Cliente",
+          authorName,
         },
       }),
       prisma.editorialStrategy.update({
         where: { id: s.id },
-        data: { status: "changes_requested", changesRequestedAt: new Date() },
+        data: {
+          status: "changes_requested",
+          changesRequestedAt: new Date(),
+          productionStage: null,
+          stageHistory: history,
+        },
       }),
       prisma.notification.create({
         data: {
