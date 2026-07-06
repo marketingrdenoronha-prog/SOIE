@@ -4,6 +4,7 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { OnboardingWizard } from "./onboarding-wizard";
 import { DossierView } from "./dossier-view";
+import { EditorialTab } from "./editorial-tab";
 
 interface Client { id: string; name: string; industry?: string; website?: string; createdAt: string }
 interface Onboarding { id: string; status: string; step: number; payload: Record<string, unknown> }
@@ -100,7 +101,7 @@ export function ClientDetail({ clientId }: { clientId: string }) {
         <p className="text-sm text-muted">Nenhum dossiê ainda. Finalize o onboarding para gerar.</p>
       )}
       {tab === "editorial" && (
-        <p className="text-sm text-muted">Linha Editorial disponível na Fase 2 da V2 (em breve).</p>
+        <EditorialTab clientId={clientId} />
       )}
       {tab === "production" && (
         <p className="text-sm text-muted">Produção automática disponível na Fase 3 da V2 (em breve).</p>

@@ -160,25 +160,52 @@ export async function assembleProjectContext(
     };
   }
 
-  // Editorial-line HISTORY: past strategies so a new line evolves from what came
-  // before (and doesn't reset the direction on every generation).
+  // Editorial-line HISTORY: all previous strategies for this client so a new
+  // line evolves from what came before (and doesn't reset the direction on every
+  // generation). Approved strategies become the strongest content memory.
   const pastStrategies = await prisma.editorialStrategy.findMany({
-    where: { organizationId, projectId, ...(strategy ? { id: { not: strategy.id } } : {}) },
+    where: {
+      organizationId,
+      OR: [{ clientId: brand.clientId }, { project: { brand: { clientId: brand.clientId } } }],
+      ...(strategy ? { id: { not: strategy.id } } : {}),
+    },
     orderBy: { createdAt: "desc" },
-    take: 5,
-    include: { editorialLines: true },
+    take: 20,
+    include: { editorialLines: { include: { categories: { include: { themes: true } } } }, reviewComments: true },
   });
   if (pastStrategies.length > 0) {
     context.editorialHistory = {
       note:
-        "Linhas editoriais anteriores deste projeto. Evolua a partir delas: mantenha o que funcionou, evite repetir e refine — não recomece do zero.",
+        "Linhas editoriais anteriores deste cliente. Evolua a partir delas: mantenha o que funcionou, evite repetir e refine — não recomece do zero.",
       strategies: pastStrategies.map((s) => ({
+        version: s.version,
+        status: s.status,
         date: s.createdAt,
         positioning: s.positioning,
         pillars: s.pillars,
-        lines: s.editorialLines.map((l) => l.name),
+        lines: s.editorialLines.map((l) => ({
+          name: l.name,
+          categories: l.categories.map((c) => ({ name: c.name, themes: c.themes.map((t) => t.title) })),
+        })),
+        feedback: s.reviewComments.filter((c) => c.decision === "request_changes").map((c) => c.comment).filter(Boolean),
       })),
     };
+
+    const approved = pastStrategies.filter((s) => s.status === "approved");
+    const themesUsed = approved.flatMap((s) =>
+      s.editorialLines.flatMap((l) => l.categories.flatMap((c) => c.themes.map((t) => t.title))),
+    );
+    const categoriesUsed = approved.flatMap((s) =>
+      s.editorialLines.flatMap((l) => l.categories.map((c) => c.name)),
+    );
+    if (themesUsed.length > 0 || categoriesUsed.length > 0) {
+      context.contentMemory = {
+        note:
+          "Memória de conteúdo das linhas editoriais APROVADAS. Evite repetição excessiva; se detectar padrões repetidos, proponha ângulos novos e evolução estratégica.",
+        themesUsed,
+        categoriesUsed,
+      };
+    }
   }
 
   // Repertoire: what was already produced for this CLIENT (across all their
