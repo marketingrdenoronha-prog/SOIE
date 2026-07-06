@@ -5,14 +5,13 @@ import { api } from "@/lib/api";
 import { OnboardingWizard } from "./onboarding-wizard";
 import { DossierView } from "./dossier-view";
 import { EditorialTab } from "./editorial-tab";
-import { EditorialStockTab } from "./editorial-stock-tab";
 import { ProductionTab } from "./production-tab";
 
 interface Client { id: string; name: string; industry?: string; website?: string; createdAt: string }
 interface Onboarding { id: string; status: string; step: number; payload: Record<string, unknown> }
 interface Dossier { id: string; status: string; version: number; summary: Record<string, unknown>; generatedAt?: string | null; createdAt: string }
 
-type Tab = "onboarding" | "dossier" | "editorial" | "stock" | "production";
+type Tab = "onboarding" | "dossier" | "editorial" | "production";
 
 /** V2 — Detalhe do cliente com o fluxo linear em abas.
  *
@@ -52,7 +51,6 @@ export function ClientDetail({ clientId }: { clientId: string }) {
     { id: "onboarding", label: "Onboarding", hint: onboarding?.status === "completed" ? "✓" : undefined },
     { id: "dossier", label: "Dossiê Estratégico", hint: dossier?.status === "ready" ? "✓" : dossier?.status === "generating" ? "…" : undefined, disabled: !dossier },
     { id: "editorial", label: "Linha Editorial", disabled: !dossier || dossier.status !== "ready" },
-    { id: "stock", label: "Estoque Editorial", disabled: !dossier || dossier.status !== "ready" },
     { id: "production", label: "Produção", disabled: !dossier || dossier.status !== "ready" },
   ];
 
@@ -106,7 +104,6 @@ export function ClientDetail({ clientId }: { clientId: string }) {
       {tab === "editorial" && (
         <EditorialTab clientId={clientId} />
       )}
-      {tab === "stock" && <EditorialStockTab clientId={clientId} />}
       {tab === "production" && <ProductionTab clientId={clientId} />}
     </div>
   );
