@@ -85,6 +85,33 @@ export async function assembleProjectContext(
     },
   };
 
+  // Onboarding + Dossiê Estratégico do cliente: a base de contexto mais rica que
+  // existe (respostas do cliente + snapshot estratégico). Alimentar a geração
+  // com isso é o que torna a copy assertiva e específica — não genérica.
+  const [dossier, onboarding] = await Promise.all([
+    prisma.strategicDossier.findFirst({
+      where: { organizationId, clientId: brand.clientId, status: "ready" },
+      orderBy: { version: "desc" },
+    }),
+    prisma.strategicOnboarding.findFirst({
+      where: { organizationId, clientId: brand.clientId },
+    }),
+  ]);
+  if (dossier) {
+    context.dossier = {
+      note: "Dossiê estratégico do cliente (mercado, personas, concorrência, voz da marca). Use como base PRINCIPAL: cada conteúdo deve refletir este dossiê.",
+      version: dossier.version,
+      summary: dossier.summary,
+    };
+  }
+  if (onboarding) {
+    context.onboarding = {
+      note: "Respostas do onboarding do cliente. São a fonte primária sobre o negócio, público e objetivos — priorize-as ao escrever a copy.",
+      status: onboarding.status,
+      payload: onboarding.payload,
+    };
+  }
+
   // The framework ("como penso pra fazer") is the copy foundation: split it out
   // so it can be elevated in the prompt, above the rest of the memory.
   const frameworkEntries = memories.filter((m) => m.kind === "framework");

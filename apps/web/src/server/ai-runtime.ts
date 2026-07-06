@@ -155,7 +155,7 @@ export async function produceInline(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function runAgent(key: AgentKey, input: any, context?: Record<string, unknown>): Promise<any> {
   if (!HAS_AI_KEY) {
-    return { ...demoAgentOutput(key, input), _demo: true };
+    return { ...demoAgentOutput(key, input, context), _demo: true };
   }
 
   const runner = await makeRunner();
@@ -182,10 +182,10 @@ export async function runAgent(key: AgentKey, input: any, context?: Record<strin
     const recovered = extractJson(asText);
     if (recovered) return { ...recovered, confidence: (recovered.confidence as string) ?? res.confidence };
     // Nothing usable → structured demo so the module still populates.
-    return { ...demoAgentOutput(key, input), confidence: "medium", _demo: true };
+    return { ...demoAgentOutput(key, input, context), confidence: "medium", _demo: true };
   } catch {
     // Provider failed entirely → don't 500 the module; degrade to demo.
-    return { ...demoAgentOutput(key, input), confidence: "medium", _demo: true };
+    return { ...demoAgentOutput(key, input, context), confidence: "medium", _demo: true };
   }
 }
 

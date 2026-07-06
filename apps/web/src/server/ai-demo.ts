@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { AgentKey, Channel, DeliverableType } from "@soie/contracts";
-import { EDITORIAL_FORMATS, formatLabel, type FormatCounts } from "@/lib/editorial-format";
-import { buildDemoThemes, type GenerationContext } from "@/server/editorial-content";
+import { buildDemoThemes, buildGenerationContext, groupByFormat, normalizeFormatCounts, totalCount } from "@/server/editorial-content";
 
 /**
  * Conteúdo estruturado de demonstração, por agente e por tipo de entrega.
@@ -26,15 +25,7 @@ function niche(input: any): string {
   return (input?.positioning || input?.nicho || input?.goal || "seu mercado").toString().slice(0, 80);
 }
 
-/** Distribuição de formatos pedida pelo usuário; default sensato quando ausente. */
-function resolveCounts(raw: any): FormatCounts {
-  const n = (v: any) => Math.max(0, Math.min(50, Math.floor(Number(v) || 0)));
-  const c = { video: n(raw?.video), motion: n(raw?.motion), carrossel: n(raw?.carrossel), estatico: n(raw?.estatico) };
-  if (c.video + c.motion + c.carrossel + c.estatico === 0) return { video: 2, motion: 1, carrossel: 2, estatico: 1 };
-  return c;
-}
-
-export function demoAgentOutput(key: AgentKey, input: any): Record<string, unknown> {
+export function demoAgentOutput(key: AgentKey, input: any, context?: any): Record<string, unknown> {
   const brand = brandName(input);
   const nk = niche(input);
   switch (key) {
@@ -118,24 +109,18 @@ export function demoAgentOutput(key: AgentKey, input: any): Record<string, unkno
       };
 
     case "planning": {
-      const ctx: GenerationContext = {
-        brand,
-        niche: nk,
-        objective: typeof input?.objective === "string" ? input.objective : undefined,
-        observations: typeof input?.observations === "string" ? input.observations : (typeof input?.brief === "string" ? input.brief : undefined),
-      };
-      const counts = resolveCounts(input?.formatCounts);
+      // Usa ATIVAMENTE o contexto (dossiê, onboarding, personas, voz da marca)
+      // para gerar copy específica e assertiva — não genérica.
+      const ctx = buildGenerationContext(input, context);
+      const counts = normalizeFormatCounts(input?.formatCounts);
       const themes = buildDemoThemes(ctx, counts);
-      // Agrupa os temas por formato em categorias dentro de uma única linha.
-      const byFormat = EDITORIAL_FORMATS
-        .map((f) => ({ name: formatLabel(f.key), themes: themes.filter((t) => t.format === formatLabel(f.key)) }))
-        .filter((c) => c.themes.length > 0);
-      const total = themes.length;
+      const byFormat = groupByFormat(themes);
+      const usedContext = Boolean(ctx.pains.length || ctx.dossierNotes || ctx.onboardingNotes);
       return {
-        positioning: `${brand}: a escolha segura em ${nk}, para quem quer resultado sem dor de cabeça.`,
+        positioning: `${ctx.brand}: a escolha segura em ${ctx.niche}, para quem quer resultado sem dor de cabeça.`,
         pillars: ["Autoridade (educar sobre o tema)", "Prova (cases e bastidores)", "Conexão (dia a dia e valores)", "Conversão (oferta e CTA)"],
-        objectives: ctx.objective ? { objetivo: ctx.objective, total } : { total, foco: "autoridade + conversão" },
-        rationale: `Distribuição pronta para produção: ${byFormat.map((c) => `${c.themes.length} ${c.name}`).join(", ")}. Cada conteúdo já sai com gancho, copy completa, CTA e observações de produção.`,
+        objectives: ctx.objective ? { objetivo: ctx.objective, total: totalCount(counts) } : { total: totalCount(counts), foco: "autoridade + conversão" },
+        rationale: `Distribuição pronta para produção: ${byFormat.map((c) => `${c.themes.length} ${c.name}`).join(", ")}. ${usedContext ? "Copy baseada no dossiê, onboarding e personas do cliente" : "Copy pronta"} — cada conteúdo já sai com gancho, copy completa, CTA e observações de produção.`,
         confidence: "medium",
         lines: [
           {

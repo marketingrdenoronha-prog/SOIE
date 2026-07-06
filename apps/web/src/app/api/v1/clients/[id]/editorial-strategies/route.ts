@@ -5,8 +5,14 @@ import { ok, handle, Errors } from "@/server/http";
 import { runAgent } from "@/server/ai-runtime";
 import { assembleProjectContext } from "@/server/project-context";
 import { resolveDefaultProjectId } from "@/server/client-scope";
-import { coerceTheme, type GenerationContext } from "@/server/editorial-content";
-import { toFormatKey } from "@/lib/editorial-format";
+import {
+  buildGenerationContext,
+  coerceTheme,
+  enforceDistribution,
+  groupByFormat,
+  normalizeFormatCounts,
+  type GenerationContext,
+} from "@/server/editorial-content";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -94,16 +100,25 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         .join("\n\n"),
     }, context);
 
-    // Cada tema sai PRONTO PARA PRODUÇÃO: coage/valida a saída (real ou demo)
-    // para o shape padronizado, preenchendo faltas com profundidade.
-    const genCtx: GenerationContext = {
-      brand: project.brand.name,
-      niche: project.brand.positioning ?? client.name,
-      objective: input.objective,
-      observations: input.observations,
-    };
-    let themeIndex = 0;
+    // Cada tema sai PRONTO PARA PRODUÇÃO. Contexto rico (dossiê, onboarding,
+    // personas, voz da marca) alimenta a copy; a saída é coada/validada e a
+    // QUANTIDADE por formato é garantida (corta excedentes, completa faltas).
+    const genCtx: GenerationContext = buildGenerationContext(
+      { brand: project.brand.name, positioning: project.brand.positioning, objective: input.objective, observations: input.observations },
+      context,
+    );
+    const counts = normalizeFormatCounts(input.formatCounts);
 
+    // Achata os temas gerados (independente de como o modelo agrupou), coage
+    // cada um e força a distribuição exata pedida pelo usuário.
+    const rawThemes: any[] = (result.lines ?? []).flatMap((l: any) =>
+      (l?.categories ?? []).flatMap((c: any) => c?.themes ?? []),
+    );
+    const coerced = rawThemes.map((raw, i) => coerceTheme(raw, genCtx, i));
+    const finalThemes = enforceDistribution(coerced, counts, genCtx);
+    const grouped = groupByFormat(finalThemes);
+
+    let themeIndex = 0;
     const strategy = await prisma.editorialStrategy.create({
       data: {
         organizationId: org,
@@ -118,21 +133,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         confidence: (result.confidence as "high" | "medium" | "low") ?? "medium",
         status: "draft",
         editorialLines: {
-          create: (result.lines ?? []).map((line: {
-            name: string; objective: string; funnelStage: string; platforms?: string[]; categories?: { name: string; themes?: { title: string; channel?: string; format?: string; copy?: unknown }[] }[];
-          }) => ({
+          create: [{
             organizationId: org,
-            name: line.name,
-            objective: line.objective as never,
-            funnelStage: line.funnelStage as never,
-            platforms: line.platforms ?? [],
+            name: "Linha Editorial",
+            objective: "authority" as never,
+            funnelStage: "tofu" as never,
+            platforms: ["instagram"],
             categories: {
-              create: (line.categories ?? []).map((cat) => ({
+              create: grouped.map((cat) => ({
                 organizationId: org,
                 name: cat.name,
                 themes: {
-                  create: (cat.themes ?? []).map((raw) => {
-                    const t = coerceTheme(raw, genCtx, themeIndex);
+                  create: cat.themes.map((t) => {
                     const priority = themeIndex;
                     themeIndex += 1;
                     return {
@@ -151,7 +163,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
                 },
               })),
             },
-          })),
+          }],
         },
       },
       include: {
