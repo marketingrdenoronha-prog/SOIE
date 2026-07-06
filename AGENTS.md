@@ -58,3 +58,16 @@ inline (with a stub fallback, so it works with or without AI keys).
   move it to `approved` or back out to the Editorial module. Operator moves use
   `POST /editorial-strategies/:id/stage` (allowed transitions in
   `apps/web/src/server/production-stage.ts`).
+
+### Editorial output (pronto para produção)
+- The Linha Editorial is generated **ready-to-produce**: only 4 formats (Vídeo,
+  Motion, Carrossel, Estático — see `apps/web/src/lib/editorial-format.ts`), the
+  user picks a quantity per format, and each content carries tema, objetivo
+  estratégico, gancho, copy completa (structured per format), CTA e observações
+  de produção. Coercion/validation + the demo generator live in
+  `apps/web/src/server/editorial-content.ts`.
+- **Without an AI key the demo generator (`apps/web/src/server/ai-demo.ts`,
+  `planning` case) is what actually runs** — keep it in sync with the real model
+  contract in `packages/ai/src/orchestrator/agent-prompts.ts` (`planning`) and the
+  `OUTPUT_SCHEMA` in `apps/web/src/server/ai-runtime.ts` whenever the output shape
+  changes, or the demo output and the real output will diverge.
