@@ -756,9 +756,18 @@ model Theme {
   // editorial — o operador não precisa reescolher no momento da produção.
   channel        String?
   format         String?
-  // V2: copy pronta do tema, já no documento que vai para o cliente aprovar.
-  // String (estático/reels) OU array de strings (carrossel, uma por TELA).
+  // V2/V3: copy pronta para produção do tema, no documento que vai para o
+  // cliente aprovar. V3 padroniza como um objeto estruturado por formato
+  // (vídeo/motion: duração + seções Gancho/Conexão/Desenvolvimento/Virada/CTA;
+  // carrossel: slides; estático: headline/subheadline/corpo/cta/designNotes).
+  // Formas legadas (string ou array de strings) continuam sendo renderizadas.
   copy           Json?
+  // V3 — campos padrão de saída (OUTPUT PADRÃO): cada conteúdo sai pronto para
+  // produção, sem depender de um Social Media escrever a copy depois.
+  strategicObjective String?
+  hook               String?
+  cta                String?
+  productionNotes    String?
   // FK inversa: quando a produção automática cria um Deliverable para este
   // tema, guarda o id para evitar duplicação e permitir navegação. @unique
   // porque cada tema gera no máximo 1 peça (a produção reusa se re-clicada).

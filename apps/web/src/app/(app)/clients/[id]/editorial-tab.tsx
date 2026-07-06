@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { arr, text } from "@/lib/render";
 import { EditorialDoc } from "@/components/editorial-doc";
+import { EDITORIAL_FORMATS, EMPTY_FORMAT_COUNTS, type FormatCounts } from "@/lib/editorial-format";
 
 type Strategy = any;
 
@@ -12,7 +13,10 @@ export function EditorialTab({ clientId }: { clientId: string }) {
   const [busy, setBusy] = useState(false);
   const [submitBusy, setSubmitBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [brief, setBrief] = useState("");
+  const [counts, setCounts] = useState<FormatCounts>({ ...EMPTY_FORMAT_COUNTS });
+  const [objective, setObjective] = useState("");
+  const [observations, setObservations] = useState("");
+  const total = counts.video + counts.motion + counts.carrossel + counts.estatico;
 
   async function load() {
     setErr(null);
@@ -29,9 +33,14 @@ export function EditorialTab({ clientId }: { clientId: string }) {
     try {
       await api(`/clients/${clientId}/editorial-strategies`, {
         method: "POST",
-        body: JSON.stringify({ brief: brief || undefined }),
+        body: JSON.stringify({
+          formatCounts: counts,
+          objective: objective || undefined,
+          observations: observations || undefined,
+        }),
       });
-      setBrief("");
+      setObjective("");
+      setObservations("");
       await load();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Erro ao gerar linha editorial");
@@ -61,7 +70,8 @@ export function EditorialTab({ clientId }: { clientId: string }) {
           <div>
             <p className="text-sm font-semibold">Nova versão da linha editorial</p>
             <p className="mt-1 text-xs text-muted">
-              A IA usa onboarding, dossiê, framework, memória, histórico e feedbacks para evoluir a comunicação.
+              Escolha a quantidade de cada formato. Cada conteúdo sai pronto para produção
+              (tema, objetivo, gancho, copy completa, CTA e observações) — o Designer/Filmaker só executa.
             </p>
           </div>
           {latest && (
@@ -70,13 +80,45 @@ export function EditorialTab({ clientId }: { clientId: string }) {
             </span>
           )}
         </div>
-        <textarea
-          value={brief}
-          onChange={(e) => setBrief(e.target.value)}
-          rows={3}
-          placeholder="Direção opcional para esta versão (ex.: foco em prova social, Black Friday, reposicionamento, evitar repetir temas anteriores…)."
-          className="mt-3 w-full resize-none rounded-lg border border-border bg-surface p-3 text-sm outline-none focus:border-brand"
-        />
+
+        <div className="mt-3">
+          <p className="label-caps mb-1 text-muted">Quantidade por formato</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {EDITORIAL_FORMATS.map((f) => (
+              <label key={f.key} className="block">
+                <span className="text-xs font-medium text-muted">{f.label}</span>
+                <input
+                  type="number" min={0} max={50}
+                  value={counts[f.key]}
+                  onChange={(e) => setCounts((c) => ({ ...c, [f.key]: Math.max(0, Math.min(50, Number(e.target.value) || 0)) }))}
+                  className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
+                />
+              </label>
+            ))}
+          </div>
+          <p className="mt-1 text-[11px] text-muted">Total: {total} conteúdo(s){total === 0 ? " — deixe zerado para uma distribuição sugerida." : ""}</p>
+        </div>
+
+        <label className="mt-3 block">
+          <span className="text-xs font-medium text-muted">Objetivo da linha editorial (opcional)</span>
+          <input
+            value={objective}
+            onChange={(e) => setObjective(e.target.value)}
+            placeholder="Ex.: gerar autoridade e agendar avaliações; aquecer para a Black Friday…"
+            className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
+          />
+        </label>
+        <label className="mt-3 block">
+          <span className="text-xs font-medium text-muted">Observações (opcional)</span>
+          <textarea
+            value={observations}
+            onChange={(e) => setObservations(e.target.value)}
+            rows={2}
+            placeholder="Direção adicional (ex.: focar em prova social, evitar repetir temas anteriores, tom mais direto…)."
+            className="mt-1 w-full resize-none rounded-lg border border-border bg-surface p-3 text-sm outline-none focus:border-brand"
+          />
+        </label>
+
         <div className="mt-3 flex items-center justify-between">
           {err ? <p className="text-sm text-crit">{err}</p> : <span />}
           <button
