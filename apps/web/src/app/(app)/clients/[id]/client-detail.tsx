@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { OnboardingWizard } from "./onboarding-wizard";
 import { DossierView } from "./dossier-view";
 import { EditorialTab } from "./editorial-tab";
+import { ProductionTab } from "./production-tab";
 
 interface Client { id: string; name: string; industry?: string; website?: string; createdAt: string }
 interface Onboarding { id: string; status: string; step: number; payload: Record<string, unknown> }
@@ -50,7 +51,7 @@ export function ClientDetail({ clientId }: { clientId: string }) {
     { id: "onboarding", label: "Onboarding", hint: onboarding?.status === "completed" ? "✓" : undefined },
     { id: "dossier", label: "Dossiê Estratégico", hint: dossier?.status === "ready" ? "✓" : dossier?.status === "generating" ? "…" : undefined, disabled: !dossier },
     { id: "editorial", label: "Linha Editorial", disabled: !dossier || dossier.status !== "ready" },
-    { id: "production", label: "Produção", disabled: true },
+    { id: "production", label: "Produção", disabled: !dossier || dossier.status !== "ready" },
   ];
 
   return (
@@ -103,9 +104,7 @@ export function ClientDetail({ clientId }: { clientId: string }) {
       {tab === "editorial" && (
         <EditorialTab clientId={clientId} />
       )}
-      {tab === "production" && (
-        <p className="text-sm text-muted">Produção automática disponível na Fase 3 da V2 (em breve).</p>
-      )}
+      {tab === "production" && <ProductionTab clientId={clientId} />}
     </div>
   );
 }
