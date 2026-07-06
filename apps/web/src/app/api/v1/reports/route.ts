@@ -8,18 +8,28 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   return handle(async () => {
     const { org } = requireAuth(req);
-    const [deliverables, aiExecs, projects] = await Promise.all([
+    const [deliverables, aiExecs, aiTotals, projects] = await Promise.all([
       prisma.deliverable.groupBy({
         by: ["status"], where: { organizationId: org }, _count: true,
       }),
       prisma.aIExecution.findMany({
         where: { organizationId: org }, orderBy: { createdAt: "desc" }, take: 20,
       }),
+      // Totais agregados no Postgres — somar só as 20 rows recentes reportava
+      // um custo financeiro errado assim que a org passava de 20 execuções.
+      prisma.aIExecution.aggregate({
+        where: { organizationId: org },
+        _sum: { costUsd: true },
+        _count: true,
+      }),
       prisma.project.count({ where: { organizationId: org } }),
     ]);
-    const totalCost = aiExecs.reduce((s, e) => s + (e.costUsd || 0), 0);
     return ok({
-      summary: { projects, totalAiCostUsd: totalCost, aiExecutionsCount: aiExecs.length },
+      summary: {
+        projects,
+        totalAiCostUsd: aiTotals._sum.costUsd ?? 0,
+        aiExecutionsCount: aiTotals._count,
+      },
       deliverablesByStatus: deliverables,
       recentAiExecutions: aiExecs,
     });

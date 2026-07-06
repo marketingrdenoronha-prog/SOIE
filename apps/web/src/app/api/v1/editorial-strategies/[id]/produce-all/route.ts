@@ -63,8 +63,40 @@ async function pool<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>
  * approved strategy (bounded concurrency). Themes already produced (theme has a
  * deliverableId) are skipped, so re-clicking only fills the gaps.
  */
+/** Builds the production brief from EVERYTHING the client approved on the
+ * theme — copy, hook, CTA, strategic objective, production notes — not just the
+ * title. The approved copy is the anchor: production refines and formats it,
+ * it must not reinvent the content the client already signed off on. */
+function themeBrief(theme: {
+  title: string;
+  strategicObjective?: string | null;
+  hook?: string | null;
+  cta?: string | null;
+  productionNotes?: string | null;
+  copy?: unknown;
+}): string {
+  const parts: string[] = [`Tema: ${theme.title}`];
+  if (theme.strategicObjective) parts.push(`Objetivo estratégico: ${theme.strategicObjective}`);
+  if (theme.hook) parts.push(`Gancho aprovado: ${theme.hook}`);
+  if (theme.cta) parts.push(`CTA aprovada: ${theme.cta}`);
+  if (theme.productionNotes) parts.push(`Observações de produção: ${theme.productionNotes}`);
+  if (theme.copy && typeof theme.copy === "object") {
+    parts.push(
+      "COPY APROVADA PELO CLIENTE (base obrigatória — refine e formate para produção, NÃO reinvente o conteúdo):\n" +
+        JSON.stringify(theme.copy).slice(0, 6000),
+    );
+  }
+  return parts.join("\n\n");
+}
+
+/** Deliverables stuck in "generating" (a previous run died mid-flight) are
+ * unlinked and removed after this grace period, so the re-click reproduces
+ * their themes instead of skipping them forever. */
+const STUCK_GENERATING_MS = 15 * 60 * 1000;
+
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return handle(async () => {
+    const startedAt = Date.now();
     const { org, sub } = requireAuth(req);
     const { id } = await params;
 
@@ -79,16 +111,48 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       throw Errors.badRequest("A linha editorial precisa estar aprovada pelo cliente para produzir.");
     }
 
+    const allThemes = strategy.editorialLines.flatMap((l) => l.categories.flatMap((c) => c.themes));
+
+    // Heal: destrava temas cuja produção anterior morreu no meio (deliverable
+    // preso em "generating" além do prazo) para que este run os reproduza.
+    const stuck = await prisma.deliverable.findMany({
+      where: {
+        organizationId: org,
+        themeId: { in: allThemes.map((t) => t.id) },
+        status: "generating",
+        updatedAt: { lt: new Date(Date.now() - STUCK_GENERATING_MS) },
+      },
+      select: { id: true, themeId: true },
+    });
+    if (stuck.length > 0) {
+      await prisma.$transaction([
+        prisma.theme.updateMany({
+          where: { id: { in: stuck.map((s) => s.themeId!).filter(Boolean) } },
+          data: { deliverableId: null },
+        }),
+        prisma.deliverable.deleteMany({ where: { id: { in: stuck.map((s) => s.id) } } }),
+      ]);
+      const healedIds = new Set(stuck.map((s) => s.id));
+      for (const t of allThemes) if (t.deliverableId && healedIds.has(t.deliverableId)) t.deliverableId = null;
+    }
+
     const context = await assembleProjectContext(org, strategy.projectId);
 
-    const themes = strategy.editorialLines
-      .flatMap((l) => l.categories.flatMap((c) => c.themes))
-      .filter((t) => !t.deliverableId); // skip already produced
+    const themes = allThemes.filter((t) => !t.deliverableId); // skip already produced
 
     let produced = 0;
     let failed = 0;
+    let skippedByBudget = 0;
+
+    // Orçamento de tempo: para de INICIAR novos temas perto do maxDuration da
+    // rota, senão a plataforma mata o request no meio e deixa peças travadas.
+    const TIME_BUDGET_MS = 240_000;
 
     await pool(themes, 3, async (theme) => {
+      if (Date.now() - startedAt > TIME_BUDGET_MS) {
+        skippedByBudget++;
+        return;
+      }
       const type = toType(theme.format);
       const channel = toChannel(theme.channel);
       const format = FORMAT_CATALOG[type];
@@ -101,7 +165,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           channel,
           type,
           title: `${format.label(channel)} · ${theme.title}`,
-          brief: theme.title,
+          brief: themeBrief(theme),
           status: "generating",
           createdBy: sub,
         },
@@ -110,7 +174,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       await prisma.theme.update({ where: { id: theme.id }, data: { deliverableId: deliverable.id } });
 
       try {
-        const out = await produceInline(deliverable.id, type, channel, theme.title, context, theme.title);
+        const out = await produceInline(deliverable.id, type, channel, themeBrief(theme), context, theme.title, { organizationId: org });
         await prisma.deliverable.update({
           where: { id: deliverable.id },
           data: {
@@ -130,6 +194,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }
     });
 
-    return ok({ produced, failed, skipped: 0, totalThemes: themes.length }, 201);
+    return ok({ produced, failed, skipped: skippedByBudget, totalThemes: themes.length }, 201);
   });
 }

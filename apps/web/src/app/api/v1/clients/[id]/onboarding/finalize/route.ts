@@ -3,13 +3,13 @@ import { prisma } from "@soie/db";
 import { isOnboardingComplete } from "@soie/contracts";
 import { requireAuth } from "@/server/auth";
 import { ok, handle, Errors } from "@/server/http";
-import { resolveDefaultProjectId } from "@/server/client-scope";
+import { resolveDefaultProject } from "@/server/client-scope";
 import { runAgent } from "@/server/ai-runtime";
 import { assembleProjectContext } from "@/server/project-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const uuid = z.string().uuid();
 
@@ -34,13 +34,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const { id } = await params;
     if (!uuid.safeParse(id).success) throw Errors.notFound("Cliente");
 
-    const client = await prisma.client.findFirst({
-      where: { id, organizationId: org, deletedAt: null },
-      select: { id: true, name: true },
-    });
+    const [client, onboarding] = await Promise.all([
+      prisma.client.findFirst({
+        where: { id, organizationId: org, deletedAt: null },
+        select: { id: true, name: true },
+      }),
+      prisma.strategicOnboarding.findUnique({ where: { clientId: id } }),
+    ]);
     if (!client) throw Errors.notFound("Cliente");
-
-    const onboarding = await prisma.strategicOnboarding.findUnique({ where: { clientId: id } });
     if (!onboarding) throw Errors.badRequest("Onboarding ainda não iniciado");
     if (!isOnboardingComplete(onboarding.payload)) {
       throw Errors.badRequest("Preencha os campos obrigatórios do onboarding antes de finalizar");
@@ -48,12 +49,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const payload = onboarding.payload as Record<string, any>;
 
     // Aplica campos derivados na Brand default (o agente planning lê isso).
-    const projectId = await resolveDefaultProjectId(client.id, org);
-    const project = await prisma.project.findFirst({
-      where: { id: projectId, organizationId: org },
-      include: { brand: true },
-    });
-    if (!project) throw Errors.notFound("Projeto default");
+    // resolveDefaultProject já devolve o projeto com a brand — sem re-fetch.
+    const project = await resolveDefaultProject(client.id, org);
 
     const brandUpdates: Record<string, unknown> = {};
     if (payload.identity?.displayName) brandUpdates.name = payload.identity.displayName;
@@ -88,11 +85,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (payload.voice?.doList || payload.voice?.dontList) {
       brandUpdates.valueProposition = (payload.competition?.differentiators ?? []).join(" · ");
     }
-    if (Object.keys(brandUpdates).length > 0) {
-      await prisma.brand.update({ where: { id: project.brand.id }, data: brandUpdates });
-    }
-
-    // Cria o dossier em status "generating" (a UI já pode mostrar spinner).
     // Guard de double-submit: dois cliques em "Finalizar" não podem disparar
     // duas pesquisas concorrentes (8 chamadas de IA e dois dossiês).
     const latestDossier = await prisma.strategicDossier.findFirst({
@@ -106,21 +98,29 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     ) {
       throw Errors.badRequest("Um dossiê já está sendo gerado para este cliente. Aguarde alguns instantes.");
     }
-    const dossier = await prisma.strategicDossier.create({
-      data: {
-        organizationId: org,
-        clientId: client.id,
-        version: (latestDossier?.version ?? 0) + 1,
-        status: "generating",
-      },
-    });
 
-    // Marca o onboarding como completo antes de disparar IA — mesmo se a
-    // pesquisa falhar, o operador tem o payload salvo e pode retentar.
-    await prisma.strategicOnboarding.update({
-      where: { id: onboarding.id },
-      data: { status: "completed", completedAt: new Date() },
-    });
+    // Escritas pré-IA num único batch atômico: brand derivada do payload,
+    // dossier "generating" (a UI já pode mostrar spinner) e onboarding
+    // completed (mesmo se a pesquisa falhar, o payload fica salvo para retry).
+    // O @@unique([clientId, version]) do dossier fecha a corrida do guard
+    // acima: o segundo clique concorrente cai em P2002 → 409.
+    const [dossier] = await prisma.$transaction([
+      prisma.strategicDossier.create({
+        data: {
+          organizationId: org,
+          clientId: client.id,
+          version: (latestDossier?.version ?? 0) + 1,
+          status: "generating",
+        },
+      }),
+      prisma.strategicOnboarding.update({
+        where: { id: onboarding.id },
+        data: { status: "completed", completedAt: new Date() },
+      }),
+      ...(Object.keys(brandUpdates).length > 0
+        ? [prisma.brand.update({ where: { id: project.brand.id }, data: brandUpdates })]
+        : []),
+    ]);
 
     // ── Pesquisa automática (4 agentes em paralelo). Cada um isolado.
     // Cada agente recebe, além do contexto geral, a seção do onboarding que é
@@ -140,6 +140,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         "market",
         { ...agentInput, offer: payload.offer, goals: payload.goals, identity: payload.identity },
         context,
+        { organizationId: org },
       ),
       runAgent(
         "competition",
@@ -149,11 +150,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           differentiators: payload.competition?.differentiators,
         },
         context,
+        { organizationId: org },
       ),
       runAgent(
         "persona",
         { ...agentInput, icp: payload.icp, offer: payload.offer },
         context,
+        { organizationId: org },
       ),
       runAgent(
         "language",
@@ -167,6 +170,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           referenceProfiles: payload.voice?.referenceProfiles,
         },
         context,
+        { organizationId: org },
       ),
     ]);
 

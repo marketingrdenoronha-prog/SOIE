@@ -7,7 +7,7 @@ import { assembleProjectContext } from "@/server/project-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 /**
  * Regenerate a deliverable, folding the client's change requests into the brief
@@ -23,6 +23,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       where: { id, organizationId: org },
       include: {
         comments: { where: { decision: "request_changes" }, orderBy: { createdAt: "desc" }, take: 10 },
+        originTheme: { select: { title: true, hook: true, cta: true, strategicObjective: true } },
       },
     });
     if (!deliverable) throw Errors.notFound("Entrega");
@@ -31,8 +32,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       .map((c) => c.comment)
       .filter(Boolean)
       .join("\n- ");
+    // O feedback do cliente é pontual ("troque o gancho do slide 2") — sem a
+    // versão anterior no brief o modelo não tem no que aplicar o ajuste e
+    // regenera do zero. Inclui o spec atual + o tema de origem como âncoras.
+    const previousSpec = deliverable.spec ? JSON.stringify(deliverable.spec).slice(0, 6000) : "";
+    const theme = deliverable.originTheme;
     const brief = [
       deliverable.brief,
+      theme ? `Tema de origem: ${theme.title}${theme.hook ? ` · Gancho: ${theme.hook}` : ""}${theme.cta ? ` · CTA: ${theme.cta}` : ""}` : "",
+      previousSpec ? `VERSÃO ANTERIOR (aplique os ajustes SOBRE ela, mantendo o que o cliente não criticou):\n${previousSpec}` : "",
       feedback ? `Ajustes pedidos pelo cliente:\n- ${feedback}` : "",
     ].filter(Boolean).join("\n\n");
 
@@ -48,6 +56,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         deliverable.channel as Channel,
         brief || undefined,
         context,
+        theme?.title,
+        { organizationId: org },
       );
     } catch (err) {
       await prisma.deliverable.update({ where: { id }, data: { status: "internal_review" } });

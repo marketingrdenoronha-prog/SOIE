@@ -25,10 +25,21 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     });
     if (!client) throw Errors.notFound("Cliente");
 
-    const dossier = await prisma.strategicDossier.findFirst({
+    let dossier = await prisma.strategicDossier.findFirst({
       where: { organizationId: org, clientId: id },
       orderBy: { createdAt: "desc" },
     });
+
+    // Auto-heal: se o request do finalize morreu (timeout/deploy) entre criar
+    // o dossier e consolidá-lo, ele ficaria "generating" para sempre e a UI
+    // presa no spinner. Depois de 10min sem consolidar, marca como failed para
+    // o operador poder refazer o finalize.
+    if (dossier?.status === "generating" && Date.now() - dossier.createdAt.getTime() > 10 * 60 * 1000) {
+      dossier = await prisma.strategicDossier.update({
+        where: { id: dossier.id },
+        data: { status: "failed" },
+      });
+    }
     return ok({ dossier });
   });
 }

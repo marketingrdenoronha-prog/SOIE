@@ -38,6 +38,10 @@ export function handle(
       if (code === "P2003" || code === "P2000" || code === "P2006" || code === "P2007") {
         return fail("bad_request", "Referência ou valor inválido", 400);
       }
+      // P2002: violação de unique — requisição concorrente/duplicada.
+      if (code === "P2002") {
+        return fail("conflict", "Registro duplicado — a operação já foi executada", 409);
+      }
     }
     console.error("route error", err);
     // Include the underlying error message so the client sees the real cause

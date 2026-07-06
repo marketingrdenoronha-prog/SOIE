@@ -49,9 +49,15 @@ export class AIGateway {
     // Up to two passes over the chain: a transient 429/5xx/timeout on the only
     // configured provider shouldn't immediately degrade the caller (which in
     // the web runtime falls back to demo content). The second pass waits a
-    // short backoff first.
+    // short backoff first. Non-retryable errors (bad key, invalid request) skip
+    // to the NEXT provider — a 401 on one vendor says nothing about the others
+    // — but never earn a second pass on the same target.
+    let sawRetryable = false;
     for (let pass = 0; pass < 2; pass++) {
-      if (pass > 0) await sleep(1500);
+      if (pass > 0) {
+        if (!sawRetryable) break;
+        await sleep(1500);
+      }
       for (let i = 0; i < chain.length; i++) {
         const target = chain[i]!;
         const adapter = this.adapters[target.provider];
@@ -67,11 +73,7 @@ export class AIGateway {
         } catch (err) {
           lastError = err;
           const retryable = err instanceof ProviderError ? err.retryable : true;
-          // Non-retryable (bad key, invalid request): retrying won't change
-          // anything — abort both loops.
-          if (!retryable) {
-            throw lastError;
-          }
+          if (retryable) sawRetryable = true;
         }
       }
     }

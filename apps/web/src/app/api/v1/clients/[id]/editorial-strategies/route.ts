@@ -94,7 +94,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       brief: [input.brief, input.observations, feedback ? `Feedback do cliente na versão anterior:\n${feedback}` : ""]
         .filter(Boolean)
         .join("\n\n"),
-    }, context);
+    }, context, { organizationId: org });
 
     // Cada tema sai PRONTO PARA PRODUÇÃO: coage/valida a saída (real ou demo)
     // para o shape padronizado, preenchendo faltas com profundidade.
@@ -116,8 +116,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         positioning: result.positioning,
         pillars: result.pillars ?? [],
         objectives: result.objectives ?? {},
-        rationale: result.rationale,
-        confidence: (result.confidence as "high" | "medium" | "low") ?? "medium",
+        // Conteúdo demo (sem chave de IA ou provider caiu) não pode se passar
+        // por estratégia real: marca no rationale e rebaixa a confiança.
+        rationale: result._demo ? `[MODO DEMO — configure uma chave de IA] ${result.rationale ?? ""}`.trim() : result.rationale,
+        confidence: result._demo ? "low" : ((result.confidence as "high" | "medium" | "low") ?? "medium"),
         status: "draft",
         editorialLines: {
           create: (result.lines ?? []).map((line: {

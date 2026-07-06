@@ -11,10 +11,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     const input = requestChangesInput.parse(await req.json());
     const link = await prisma.reviewLink.findUnique({
       where: { token },
-      include: { deliverable: true },
+      include: {
+        deliverable: {
+          include: { project: { select: { brand: { select: { clientId: true } } } } },
+        },
+      },
     });
     if (!link || link.status === "revoked") throw Errors.notFound("Link");
     const d = link.deliverable;
+    const clientId = d.project?.brand?.clientId;
 
     await prisma.$transaction([
       prisma.reviewComment.create({
@@ -28,6 +33,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
         },
       }),
       prisma.deliverable.update({ where: { id: d.id }, data: { status: "changes_requested" } }),
+      // Aprendizado persistente: o feedback vira memória de escopo do cliente e
+      // entra em TODAS as gerações futuras — mesmo depois que esta entrega sair
+      // da janela do repertoire (últimas 15).
+      ...(clientId && input.comment.trim().length >= 10
+        ? [prisma.memory.create({
+            data: {
+              organizationId: d.organizationId,
+              scope: "client",
+              scopeId: clientId,
+              kind: "feedback_cliente",
+              content: `Ajuste pedido pelo cliente em "${d.title}" (${d.type}/${d.channel}): ${input.comment.slice(0, 500)}`,
+              sourceRef: d.id,
+            },
+          })]
+        : []),
       prisma.notification.create({
         data: {
           organizationId: d.organizationId,

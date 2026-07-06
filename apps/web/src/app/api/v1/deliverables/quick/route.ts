@@ -9,7 +9,7 @@ import { assembleProjectContext } from "@/server/project-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const body = z
   .object({
@@ -81,7 +81,7 @@ export async function POST(req: Request) {
 
     let produced;
     try {
-      produced = await produceInline(deliverable.id, input.type, input.channel, input.brief, context, input.theme);
+      produced = await produceInline(deliverable.id, input.type, input.channel, input.brief, context, input.theme, { organizationId: org });
     } catch (err) {
       // Don't leave the deliverable stuck on "generating" if generation fails.
       await prisma.deliverable.update({

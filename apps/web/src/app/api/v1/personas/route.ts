@@ -44,7 +44,7 @@ export async function POST(req: Request) {
       positioning: project.brand.positioning,
       goal: project.goal,
       brief: input.brief,
-    }, context);
+    }, context, { organizationId: org });
 
     const persona = await prisma.persona.create({
       data: {

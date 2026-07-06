@@ -95,18 +95,10 @@ export async function POST(req: Request) {
     }
 
     // Fresh calendar per generation (replace the project's previous one).
-    await prisma.calendar.deleteMany({ where: { organizationId: org, projectId: input.projectId } });
-    const calendar = await prisma.calendar.create({
-      data: {
-        organizationId: org,
-        projectId: input.projectId,
-        name: `Calendário — ${project.brand?.name ?? project.name}`,
-      },
-    });
-
+    // Atômico: sem a transação, uma falha após o deleteMany apagava o
+    // calendário antigo sem criar o novo.
     const entries = slots.slice(0, dates.length).map((s, i) => ({
       organizationId: org,
-      calendarId: calendar.id,
       title: s.title,
       date: dates[i]!,
       time: "09:00",
@@ -114,7 +106,17 @@ export async function POST(req: Request) {
       platform: s.platform,
       dragOrder: i,
     }));
-    await prisma.calendarEntry.createMany({ data: entries });
+    const [, calendar] = await prisma.$transaction([
+      prisma.calendar.deleteMany({ where: { organizationId: org, projectId: input.projectId } }),
+      prisma.calendar.create({
+        data: {
+          organizationId: org,
+          projectId: input.projectId,
+          name: `Calendário — ${project.brand?.name ?? project.name}`,
+          entries: { createMany: { data: entries } },
+        },
+      }),
+    ]);
 
     return ok({ calendarId: calendar.id, scheduled: entries.length, totalThemes: slots.length }, 201);
   });

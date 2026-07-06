@@ -50,77 +50,95 @@ export async function POST(req: Request) {
     const stats = { total: clients.length, clients: 0, brands: 0, projects: 0, voices: 0, vocabularies: 0, skipped: 0 };
     const errors: string[] = [];
 
+    // Um findMany em vez de um findFirst por cliente — o custo de "já existe?"
+    // deixa de escalar com o tamanho da base.
+    const existingNames = new Set(
+      (
+        await prisma.client.findMany({
+          where: { organizationId: org, name: { in: clients.map((c) => c.nome) }, deletedAt: null },
+          select: { name: true },
+        })
+      ).map((r) => r.name),
+    );
+
+    const toImport: BeamClient[] = [];
     for (const c of clients) {
-      try {
-        const existing = await prisma.client.findFirst({
-          where: { organizationId: org, name: c.nome, deletedAt: null },
-        });
-        if (existing) { stats.skipped++; continue; }
-        if (dryRun) { stats.clients++; continue; }
+      if (existingNames.has(c.nome)) { stats.skipped++; continue; }
+      if (dryRun) { stats.clients++; continue; }
+      toImport.push(c);
+    }
 
-        const tags = [
-          c.status ?? "ativo",
-          ...(Array.isArray(c.nome_alternativo) ? c.nome_alternativo : c.nome_alternativo ? [c.nome_alternativo] : []),
-          ...(c.localizacao ? [c.localizacao] : []),
-        ];
+    // Nested create: Cliente → Marca → Projeto + BrandVoice + Vocabulary numa
+    // única query atômica por cliente (antes eram até 6 awaits seriais, e uma
+    // falha no meio deixava cliente sem brand/project). Concorrência limitada
+    // para não saturar o pool de conexões do Neon.
+    const CONCURRENCY = 4;
+    for (let i = 0; i < toImport.length; i += CONCURRENCY) {
+      await Promise.all(
+        toImport.slice(i, i + CONCURRENCY).map(async (c) => {
+          try {
+            const tags = [
+              c.status ?? "ativo",
+              ...(Array.isArray(c.nome_alternativo) ? c.nome_alternativo : c.nome_alternativo ? [c.nome_alternativo] : []),
+              ...(c.localizacao ? [c.localizacao] : []),
+            ];
+            const hasVoice = Boolean(c.tom_de_voz || c.diferenciais?.length);
+            const pilares = c.pilares_de_conteudo ?? [];
 
-        const client = await prisma.client.create({
-          data: {
-            organizationId: org, name: c.nome, industry: c.nicho, website: c.instagram,
-            tags: tags.slice(0, 20), status: c.status ?? "active",
-          },
-        });
-        stats.clients++;
-
-        // Cria a marca com posicionamento e objetivos derivados do perfil.
-        const brand = await prisma.brand.create({
-          data: {
-            organizationId: org, clientId: client.id, name: c.nome,
-            positioning: c.tagline ?? c.publico_alvo,
-            valueProposition: c.diferenciais?.join(" · "),
-            products: flattenProducts(c.produtos_servicos),
-            objectives: (c.objetivos_atuais ? [c.objetivos_atuais] : []) as unknown as object,
-            icp: c.publico_alvo ? { descricao: c.publico_alvo } : {},
-          },
-        });
-        stats.brands++;
-
-        // Projeto padrão = objetivos atuais / "Atendimento contínuo".
-        await prisma.project.create({
-          data: {
-            organizationId: org, brandId: brand.id,
-            name: c.objetivos_atuais?.slice(0, 100) ?? "Atendimento contínuo",
-            goal: buildGoal(c),
-            platforms: ["instagram"],
-          },
-        });
-        stats.projects++;
-
-        // DNA da marca: tom de voz + vocabulário/pilares.
-        if (c.tom_de_voz || c.diferenciais?.length) {
-          await prisma.brandVoice.create({
-            data: {
-              organizationId: org, brandId: brand.id,
-              tone: c.tom_de_voz ? { descricao: c.tom_de_voz } : {},
-              doList: (c.diferenciais ?? []) as unknown as object,
-              dontList: (c.concorrentes ?? []).map((x) => `Não mencionar concorrentes (${x})`) as unknown as object,
-              confidence: "medium",
-            },
-          });
-          stats.voices++;
-        }
-
-        if (c.pilares_de_conteudo?.length) {
-          await prisma.vocabulary.createMany({
-            data: c.pilares_de_conteudo.map((p) => ({
-              organizationId: org, brandId: brand.id, kind: "pilar", term: p,
-            })),
-          });
-          stats.vocabularies += c.pilares_de_conteudo.length;
-        }
-      } catch (e) {
-        errors.push(`${c.nome}: ${e instanceof Error ? e.message : String(e)}`);
-      }
+            await prisma.client.create({
+              data: {
+                organizationId: org, name: c.nome, industry: c.nicho, website: c.instagram,
+                tags: tags.slice(0, 20), status: c.status ?? "active",
+                brands: {
+                  create: [{
+                    organizationId: org, name: c.nome,
+                    positioning: c.tagline ?? c.publico_alvo,
+                    valueProposition: c.diferenciais?.join(" · "),
+                    products: flattenProducts(c.produtos_servicos),
+                    objectives: (c.objetivos_atuais ? [c.objetivos_atuais] : []) as unknown as object,
+                    icp: c.publico_alvo ? { descricao: c.publico_alvo } : {},
+                    projects: {
+                      create: [{
+                        organizationId: org,
+                        name: c.objetivos_atuais?.slice(0, 100) ?? "Atendimento contínuo",
+                        goal: buildGoal(c),
+                        platforms: ["instagram"],
+                      }],
+                    },
+                    ...(hasVoice
+                      ? {
+                          brandVoices: {
+                            create: [{
+                              organizationId: org,
+                              tone: c.tom_de_voz ? { descricao: c.tom_de_voz } : {},
+                              doList: (c.diferenciais ?? []) as unknown as object,
+                              dontList: (c.concorrentes ?? []).map((x) => `Não mencionar concorrentes (${x})`) as unknown as object,
+                              confidence: "medium" as const,
+                            }],
+                          },
+                        }
+                      : {}),
+                    ...(pilares.length > 0
+                      ? {
+                          vocabularies: {
+                            create: pilares.map((p) => ({ organizationId: org, kind: "pilar", term: p })),
+                          },
+                        }
+                      : {}),
+                  }],
+                },
+              },
+            });
+            stats.clients++;
+            stats.brands++;
+            stats.projects++;
+            if (hasVoice) stats.voices++;
+            stats.vocabularies += pilares.length;
+          } catch (e) {
+            errors.push(`${c.nome}: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }),
+      );
     }
 
     void sub;

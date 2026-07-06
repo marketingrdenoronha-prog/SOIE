@@ -312,27 +312,37 @@ export async function assembleProjectContext(
         feedback: s.reviewComments.map((c) => c.comment).filter(Boolean),
       })),
     };
+  }
 
-    const approved = pastStrategies.filter((s) => s.status === "approved");
-    const approvedThemes = approved.flatMap((s) =>
-      s.editorialLines.flatMap((l) => l.categories.flatMap((c) => c.themes)),
-    );
-    const themesUsed = approvedThemes.map((t) => t.title).slice(0, 150);
-    const hooksUsed = approvedThemes.map((t) => t.hook).filter(Boolean).slice(0, 150);
-    const categoriesUsed = [
-      ...new Set(
-        approved.flatMap((s) => s.editorialLines.flatMap((l) => l.categories.map((c) => c.name))),
-      ),
-    ].slice(0, 60);
-    if (themesUsed.length > 0 || categoriesUsed.length > 0) {
-      context.contentMemory = {
-        note:
-          "Memória de conteúdo das linhas editoriais APROVADAS. NÃO repita estes temas nem estes ganchos; evite repetição excessiva de categorias e proponha ângulos novos e evolução estratégica.",
-        themesUsed,
-        hooksUsed,
-        categoriesUsed,
-      };
+  // Memória de conteúdo: temas/ganchos/categorias de TODAS as estratégias
+  // aprovadas — incluindo a ATUAL (que fica fora de pastStrategies mas é
+  // exatamente a mais importante de não repetir na próxima versão).
+  const approved = pastStrategies.filter((s) => s.status === "approved");
+  const approvedThemes: Array<{ title: string; hook: string | null }> = approved.flatMap((s) =>
+    s.editorialLines.flatMap((l) => l.categories.flatMap((c) => c.themes)),
+  );
+  const approvedCategories = approved.flatMap((s) =>
+    s.editorialLines.flatMap((l) => l.categories.map((c) => c.name)),
+  );
+  if (strategy?.status === "approved") {
+    for (const l of strategy.editorialLines) {
+      for (const c of l.categories) {
+        approvedCategories.push(c.name);
+        for (const t of c.themes) approvedThemes.push({ title: t.title, hook: t.hook });
+      }
     }
+  }
+  const themesUsed = approvedThemes.map((t) => t.title).slice(0, 150);
+  const hooksUsed = approvedThemes.map((t) => t.hook).filter(Boolean).slice(0, 150);
+  const categoriesUsed = [...new Set(approvedCategories)].slice(0, 60);
+  if (themesUsed.length > 0 || categoriesUsed.length > 0) {
+    context.contentMemory = {
+      note:
+        "Memória de conteúdo das linhas editoriais APROVADAS. NÃO repita estes temas nem estes ganchos; evite repetição excessiva de categorias e proponha ângulos novos e evolução estratégica.",
+      themesUsed,
+      hooksUsed,
+      categoriesUsed,
+    };
   }
 
   if (priorDeliverables.length > 0) {

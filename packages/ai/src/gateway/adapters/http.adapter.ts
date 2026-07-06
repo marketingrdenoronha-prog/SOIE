@@ -18,8 +18,10 @@ import { estimateTokens } from "./base.adapter.js";
  */
 /** Hard cap per provider HTTP call. Without it a hung connection holds the
  * serverless function until the platform's maxDuration kills it — with it the
- * gateway's fallback chain gets a chance to answer from another provider. */
-const REQUEST_TIMEOUT_MS = 120_000;
+ * gateway's fallback chain gets a chance to answer from another provider.
+ * Must stay well under the AI routes' maxDuration (300s) so the fallback and
+ * the retry pass still fit inside a single invocation. */
+const REQUEST_TIMEOUT_MS = 90_000;
 
 /** Default output budget when the caller doesn't set one. Editorial-line
  * generation returns large JSON documents (full copy per theme), so a small

@@ -50,7 +50,7 @@ export async function POST(req: Request) {
       objectives: project.brand.objectives,
       personas: project.personas.map((p) => ({ name: p.name, pains: p.pains.map((x) => x.description) })),
       brief: input.brief,
-    }, context);
+    }, context, { organizationId: org });
 
     const strategy = await prisma.editorialStrategy.create({
       data: {

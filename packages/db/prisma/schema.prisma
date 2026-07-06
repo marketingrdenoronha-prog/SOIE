@@ -1502,6 +1502,7 @@ model StrategicDossier {
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
+  @@unique([clientId, version])
   @@index([organizationId])
   @@index([clientId])
   @@map("strategic_dossiers")

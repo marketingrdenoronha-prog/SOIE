@@ -129,6 +129,37 @@ function extractJson(text: string): Record<string, unknown> | null {
   return null;
 }
 
+/** Persists an AIExecution row so cost/latency show up in relatórios. Falha de
+ * telemetria nunca derruba a geração (catch-and-log). */
+async function logExecution(
+  organizationId: string,
+  fields: { provider: string; model: string; inputTokens?: number; outputTokens?: number; latencyMs?: number; costUsd?: number; requestRef?: string },
+): Promise<void> {
+  try {
+    await prisma.aIExecution.create({
+      data: {
+        organizationId,
+        provider: fields.provider as any,
+        model: fields.model,
+        inputTokens: fields.inputTokens ?? 0,
+        outputTokens: fields.outputTokens ?? 0,
+        latencyMs: fields.latencyMs ?? 0,
+        costUsd: fields.costUsd ?? 0,
+        status: "success",
+        requestRef: fields.requestRef,
+      },
+    });
+  } catch (err) {
+    console.error("aiExecution telemetry failed", err);
+  }
+}
+
+export interface AIRunOpts {
+  /** Quando presente, a execução é registrada em AIExecution (custo/latência
+   * nos relatórios). Sem org não há como atribuir o custo — não registra. */
+  organizationId?: string;
+}
+
 export async function produceInline(
   runId: string,
   type: DeliverableType,
@@ -136,6 +167,7 @@ export async function produceInline(
   brief?: string,
   context?: Record<string, unknown>,
   theme?: string,
+  opts?: AIRunOpts,
 ): Promise<ProducedDeliverable> {
   // Sem chave: entrega estruturada de demonstração, pronta para revisão.
   if (!HAS_AI_KEY) {
@@ -151,8 +183,19 @@ export async function produceInline(
     };
   }
 
+  const startedAt = Date.now();
   const runner = await makeRunner();
   const produced = await produceDeliverable({ runId, type, channel, brief, theme, context, runner, resolveAgent });
+
+  if (opts?.organizationId) {
+    await logExecution(opts.organizationId, {
+      provider: MODEL_POLICY.preferred.provider,
+      model: MODEL_POLICY.preferred.model,
+      costUsd: produced.costUsd,
+      latencyMs: Date.now() - startedAt,
+      requestRef: runId,
+    });
+  }
 
   // Se o modelo não produziu spec estruturado, mas texto solto, tenta extrair
   // JSON; se ainda assim vier vazio, usa a spec demo para não entregar vazio.
@@ -171,7 +214,7 @@ export async function produceInline(
  * saves empty.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function runAgent(key: AgentKey, input: any, context?: Record<string, unknown>): Promise<any> {
+export async function runAgent(key: AgentKey, input: any, context?: Record<string, unknown>, opts?: AIRunOpts): Promise<any> {
   if (!HAS_AI_KEY) {
     return { ...demoAgentOutput(key, input), _demo: true };
   }
@@ -190,6 +233,16 @@ export async function runAgent(key: AgentKey, input: any, context?: Record<strin
 
   try {
     const res = await runner.run(def, req);
+    if (opts?.organizationId) {
+      await logExecution(opts.organizationId, {
+        provider: res.usage.provider,
+        model: res.usage.model,
+        inputTokens: res.usage.inputTokens,
+        outputTokens: res.usage.outputTokens,
+        costUsd: res.usage.costUsd,
+        requestRef: `${key}:${req.runId}`,
+      });
+    }
     const out = res.output as unknown;
     // Structured object → use directly.
     if (out && typeof out === "object" && !Array.isArray(out) && !("text" in (out as any))) {

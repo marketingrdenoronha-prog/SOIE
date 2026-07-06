@@ -54,7 +54,7 @@ export async function POST(req: Request) {
 
     const result = await runAgent("language", {
       brand: brand.name, positioning: brand.positioning, samples: input.samples,
-    }, context);
+    }, context, { organizationId: org });
 
     const voice = await prisma.brandVoice.create({
       data: {

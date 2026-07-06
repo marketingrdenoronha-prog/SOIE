@@ -25,7 +25,12 @@ DECLARE
     'prompt_versions','orchestration_runs','ai_executions','chats',
     'chat_messages','memories','knowledge_bases','knowledge_documents',
     'embeddings','subscriptions','usage_records','invoices','settings',
-    'notifications','audit_logs','logs','reports'
+    'notifications','audit_logs','logs','reports',
+    -- Produção e revisão pública (fase de entregas)
+    'deliverables','review_links','review_comments',
+    -- V2: onboarding estratégico, dossiê congelado e aprovação da linha editorial
+    'strategic_onboardings','strategic_dossiers',
+    'editorial_review_links','editorial_review_comments'
   ];
 BEGIN
   FOREACH t IN ARRAY tenant_tables LOOP

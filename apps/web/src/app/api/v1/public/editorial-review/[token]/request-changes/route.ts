@@ -57,6 +57,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
           data: { strategyId: s.id },
         },
       }),
+      // Aprendizado persistente: direção editorial rejeitada vira memória de
+      // escopo do cliente — as próximas versões (e produções) nunca perdem
+      // este sinal, mesmo fora da janela do editorialHistory.
+      ...(s.clientId && input.comment.trim().length >= 10
+        ? [prisma.memory.create({
+            data: {
+              organizationId: s.organizationId,
+              scope: "client",
+              scopeId: s.clientId,
+              kind: "feedback_cliente",
+              content: `Ajuste pedido pelo cliente na linha editorial V${s.version}: ${input.comment.slice(0, 500)}`,
+              sourceRef: s.id,
+            },
+          })]
+        : []),
     ]);
     return ok({ status: "changes_requested" });
   });

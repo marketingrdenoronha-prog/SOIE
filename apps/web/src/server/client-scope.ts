@@ -23,6 +23,28 @@ export async function resolveDefaultProjectId(
     select: { id: true },
   });
   if (existing) return existing.id;
+  return provisionDefaultProject(clientId, organizationId);
+}
+
+/** Igual ao resolveDefaultProjectId, mas devolve o Project inteiro com a Brand
+ * — para rotas que precisam dos dois (evita o re-fetch do projeto que o
+ * resolvedor acabou de encontrar). */
+export async function resolveDefaultProject(clientId: string, organizationId: string) {
+  const load = () =>
+    prisma.project.findFirst({
+      where: { organizationId, brand: { clientId } },
+      orderBy: { createdAt: "asc" },
+      include: { brand: true },
+    });
+  const existing = await load();
+  if (existing) return existing;
+  await provisionDefaultProject(clientId, organizationId);
+  const created = await load();
+  if (!created) throw new Error(`Falha ao provisionar projeto default do cliente ${clientId}`);
+  return created;
+}
+
+async function provisionDefaultProject(clientId: string, organizationId: string): Promise<string> {
 
   // Provisiona Brand + Project default. Idempotente: se outro request criar
   // antes, refazemos o findFirst dentro da transação para não duplicar.

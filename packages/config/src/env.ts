@@ -60,6 +60,17 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     throw new Error(`Invalid environment configuration:\n${issues}`);
   }
   cached = parsed.data;
+  // Segurança: em produção, rodar com os segredos JWT default significa que
+  // qualquer pessoa pode forjar tokens válidos. Não derruba o processo (para
+  // não travar um deploy existente), mas grita no log a cada cold start.
+  if (cached.NODE_ENV === "production") {
+    if (cached.JWT_ACCESS_SECRET === "dev-access-secret" || cached.JWT_REFRESH_SECRET === "dev-refresh-secret") {
+      console.error(
+        "[SECURITY] JWT_ACCESS_SECRET/JWT_REFRESH_SECRET estão com o valor default de desenvolvimento em produção. " +
+        "Qualquer token pode ser forjado. Configure segredos fortes nas variáveis de ambiente AGORA.",
+      );
+    }
+  }
   return cached;
 }
 

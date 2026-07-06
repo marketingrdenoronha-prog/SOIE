@@ -59,8 +59,8 @@ export async function POST(req: Request) {
     try {
       const context = await assembleProjectContext(org, input.projectId);
       const [market, competition] = await Promise.all([
-        runAgent("market", { brand: project.brand.name, positioning: project.brand.positioning, brief: input.brief }, context),
-        runAgent("competition", { brand: project.brand.name, positioning: project.brand.positioning, brief: input.brief }, context),
+        runAgent("market", { brand: project.brand.name, positioning: project.brand.positioning, brief: input.brief }, context, { organizationId: org }),
+        runAgent("competition", { brand: project.brand.name, positioning: project.brand.positioning, brief: input.brief }, context, { organizationId: org }),
       ]);
 
       await Promise.all([
