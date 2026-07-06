@@ -1,4 +1,5 @@
 import { prisma } from "@soie/db";
+import { summarizeStockForContext, type StockEntry } from "./editorial-stock";
 
 /**
  * Assembles the strategic context of a project (business, audience, brand voice
@@ -157,6 +158,44 @@ export async function assembleProjectContext(
     select: { version: true, summary: true, generatedAt: true },
   });
 
+  // ESTOQUE EDITORIAL — o acervo permanente do cliente (linhas aprovadas +
+  // enviadas). É a principal fonte de memória estratégica: a IA lê TODO o
+  // estoque e extrai padrões antes de gerar uma nova linha. Indexado por
+  // (clientId, inStock); ordenado do mais recente e limitado a uma janela
+  // ampla para escalar a centenas de linhas sem estourar o prompt.
+  const STOCK_WINDOW = 60;
+  const stockQ = prisma.editorialStrategy.findMany({
+    where: { organizationId, clientId: brand.clientId, inStock: true },
+    orderBy: { sentAt: "desc" },
+    take: STOCK_WINDOW,
+    select: {
+      version: true,
+      competencia: true,
+      sentAt: true,
+      approvedAt: true,
+      deliveryMethod: true,
+      contentCount: true,
+      positioning: true,
+      pillars: true,
+      editorialLines: {
+        select: {
+          name: true,
+          categories: {
+            select: {
+              name: true,
+              themes: {
+                select: {
+                  title: true, hook: true, cta: true, format: true,
+                  strategicObjective: true, copy: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
   const [
     memories,
     marketAnalysis,
@@ -165,6 +204,7 @@ export async function assembleProjectContext(
     priorDeliverables,
     onboarding,
     dossier,
+    stock,
   ] = await Promise.all([
     memoriesQ,
     marketAnalysisQ,
@@ -173,6 +213,7 @@ export async function assembleProjectContext(
     priorDeliverablesQ,
     onboardingQ,
     dossierQ,
+    stockQ,
   ]);
 
   const context: Record<string, unknown> = {
@@ -218,6 +259,14 @@ export async function assembleProjectContext(
       marketSummary: typeof s.market?.summary === "string" ? s.market.summary : undefined,
       competitionSummary: typeof s.competition?.summary === "string" ? s.competition.summary : undefined,
     };
+  }
+
+  // ESTOQUE EDITORIAL — o acervo completo de linhas aprovadas + enviadas. A IA
+  // lê TODO o estoque, compara as linhas entre si e extrai padrões (comunicação,
+  // estratégia, evolução) para EVOLUIR a comunicação sem repetir. Nunca
+  // considera apenas a última linha.
+  if (stock.length > 0) {
+    context.editorialStock = summarizeStockForContext(stock as unknown as StockEntry[]);
   }
 
   // The framework ("como penso pra fazer") is the copy foundation: split it out

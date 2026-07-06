@@ -12,6 +12,7 @@ export function EditorialTab({ clientId }: { clientId: string }) {
   const [items, setItems] = useState<Strategy[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [submitBusy, setSubmitBusy] = useState<string | null>(null);
+  const [sendBusy, setSendBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [counts, setCounts] = useState<FormatCounts>({ ...EMPTY_FORMAT_COUNTS });
   const [objective, setObjective] = useState("");
@@ -58,6 +59,22 @@ export function EditorialTab({ clientId }: { clientId: string }) {
       setErr(e instanceof Error ? e.message : "Erro ao enviar para aprovação");
     } finally {
       setSubmitBusy(null);
+    }
+  }
+
+  /** Envia a linha APROVADA ao cliente (mensagem/documento) — entra no estoque. */
+  async function sendToStock(id: string, method: "message" | "document") {
+    setSendBusy(id); setErr(null);
+    try {
+      await api(`/editorial-strategies/${id}/send`, {
+        method: "POST",
+        body: JSON.stringify({ method }),
+      });
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Erro ao enviar ao cliente");
+    } finally {
+      setSendBusy(null);
     }
   }
 
@@ -144,7 +161,9 @@ export function EditorialTab({ clientId }: { clientId: string }) {
               key={s.id}
               s={s}
               submitBusy={submitBusy === s.id}
+              sendBusy={sendBusy === s.id}
               onSubmit={() => submit(s.id)}
+              onSendToStock={(method) => sendToStock(s.id, method)}
             />
           ))}
         </div>
@@ -153,7 +172,9 @@ export function EditorialTab({ clientId }: { clientId: string }) {
   );
 }
 
-function StrategyCard({ s, submitBusy, onSubmit }: { s: any; submitBusy: boolean; onSubmit: () => void }) {
+function StrategyCard({ s, submitBusy, sendBusy, onSubmit, onSendToStock }: {
+  s: any; submitBusy: boolean; sendBusy: boolean; onSubmit: () => void; onSendToStock: (method: "message" | "document") => void;
+}) {
   const [copied, setCopied] = useState(false);
   const openLink = s.reviewLinks?.find((l: any) => l.status === "open") ?? s.reviewLinks?.[0];
   const reviewUrl = openLink && typeof window !== "undefined" ? `${window.location.origin}/editorial-review/${openLink.token}` : null;
@@ -164,6 +185,7 @@ function StrategyCard({ s, submitBusy, onSubmit }: { s: any; submitBusy: boolean
       <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
         <p className="font-semibold">Linha Editorial V{s.version}</p>
         <StatusBadge status={s.status} />
+        {s.inStock && <span className="rounded-full bg-ok/15 px-2 py-0.5 text-xs font-medium text-ok">No estoque</span>}
         {s.approvedAt && <span className="text-xs text-muted">aprovada em {new Date(s.approvedAt).toLocaleDateString("pt-BR")}</span>}
         <div className="ml-auto flex flex-wrap gap-2">
           {reviewUrl && (
@@ -179,7 +201,7 @@ function StrategyCard({ s, submitBusy, onSubmit }: { s: any; submitBusy: boolean
               </button>
             </>
           )}
-          {s.status !== "approved" && (
+          {s.status !== "approved" ? (
             <button
               onClick={onSubmit}
               disabled={submitBusy}
@@ -187,6 +209,24 @@ function StrategyCard({ s, submitBusy, onSubmit }: { s: any; submitBusy: boolean
             >
               {submitBusy ? "Enviando…" : s.status === "draft" ? "Enviar para Cliente" : "Reenviar"}
             </button>
+          ) : (
+            // Linha aprovada: envio final ao cliente (mensagem/documento) → arquiva no Estoque Editorial.
+            <>
+              <button
+                onClick={() => onSendToStock("message")}
+                disabled={sendBusy}
+                className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-strong disabled:opacity-50 dark:text-[#00390d]"
+              >
+                {sendBusy ? "Enviando…" : s.inStock ? "Reenviar por mensagem" : "Enviar por mensagem"}
+              </button>
+              <button
+                onClick={() => onSendToStock("document")}
+                disabled={sendBusy}
+                className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface disabled:opacity-50"
+              >
+                {sendBusy ? "Enviando…" : s.inStock ? "Reenviar por documento" : "Enviar por documento"}
+              </button>
+            </>
           )}
         </div>
       </div>
