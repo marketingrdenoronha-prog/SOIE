@@ -42,10 +42,10 @@ export function Sidebar() {
 
       <div className="border-t border-border p-3">
         <Link
-          href="/deliverables"
+          href="/clients"
           className="mb-1 flex items-center justify-center gap-2 rounded-md bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong dark:text-[#00390d]"
         >
-          <span>＋</span> New Execution
+          <span>＋</span> Novo cliente
         </Link>
         <Link
           href="/settings"
