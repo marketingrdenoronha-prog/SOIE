@@ -16,7 +16,13 @@ interface Dashboard {
     emRevisaoInterna: number; aprovacaoCliente: number; aprovadas: number;
   };
   approvals: { pendentes: number; linhas: number; pecas: number };
-  ai: { custoMesUsd: number; execucoesMes: number; custoTotalUsd: number; execucoesTotal: number };
+  ai: {
+    custoMesUsd: number; execucoesMes: number; custoTotalUsd: number; execucoesTotal: number;
+    costSimulation: {
+      inputTokens: number; outputTokens: number; totalTokens: number;
+      gpt4oUsd: number; sonnet5Usd: number; economiaUsd: number; economiaPct: number;
+    };
+  };
   recentStrategies: Array<{
     id: string; version: number; status: string; productionStage: string | null;
     contentCount: number; inStock: boolean; createdAt: string; clientName: string;
@@ -159,10 +165,61 @@ export function DashboardClient() {
               </div>
             </div>
           </section>
+
+          {/* Simulação de custo por modelo — "e se todo o consumo tivesse rodado no modelo X". */}
+          <section className="rounded-xl border border-border bg-elevated p-5">
+            <div className="mb-1 flex items-center justify-between">
+              <h2 className="text-sm font-semibold">Simulação de custo por modelo</h2>
+              <span className="text-xs text-muted">
+                {fmtTokens(data.ai.costSimulation.totalTokens)} tokens processados
+              </span>
+            </div>
+            <p className="mb-4 text-xs text-muted">
+              Mesmo consumo de IA até agora, precificado sob cada modelo (price book do sistema).
+            </p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <ModelCost label="gpt-4o" value={usd(data.ai.costSimulation.gpt4oUsd)} sub="$5 / $15 por 1M" />
+              <ModelCost
+                label="Claude Sonnet 5"
+                value={usd(data.ai.costSimulation.sonnet5Usd)}
+                sub="$3 / $15 por 1M"
+                accent
+              />
+              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
+                <p className="text-2xl font-semibold tabular-nums text-emerald-500">
+                  {usd(data.ai.costSimulation.economiaUsd)}
+                </p>
+                <p className="mt-1 text-[11px] uppercase tracking-wide text-muted">
+                  economia com Sonnet 5 ({data.ai.costSimulation.economiaPct.toFixed(0)}%)
+                </p>
+              </div>
+            </div>
+            <p className="mt-3 text-[11px] text-muted">
+              Baseado em {fmtTokens(data.ai.costSimulation.inputTokens)} tokens de entrada e{" "}
+              {fmtTokens(data.ai.costSimulation.outputTokens)} de saída registrados (execuções com
+              telemetria de tokens). Custo real acumulado: {usd(data.ai.custoTotalUsd)}.
+            </p>
+          </section>
         </>
       )}
     </div>
   );
+}
+
+function ModelCost({ label, value, sub, accent }: { label: string; value: string; sub: string; accent?: boolean }) {
+  return (
+    <div className={`rounded-lg border p-3 ${accent ? "border-brand/40 bg-brand/5" : "border-border/70"}`}>
+      <p className="text-2xl font-semibold tabular-nums">{value}</p>
+      <p className="mt-1 text-[11px] uppercase tracking-wide text-muted">{label}</p>
+      <p className="text-[11px] text-muted">{sub}</p>
+    </div>
+  );
+}
+
+function fmtTokens(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + "M";
+  if (n >= 1_000) return (n / 1_000).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + "k";
+  return String(n);
 }
 
 function FunnelStep({ label, value, href, accent }: { label: string; value: number; href?: string; accent?: boolean }) {

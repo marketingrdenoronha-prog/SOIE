@@ -47,7 +47,11 @@ export async function GET(req: Request) {
         _sum: { costUsd: true },
         _count: true,
       }),
-      prisma.aIExecution.aggregate({ where, _sum: { costUsd: true }, _count: true }),
+      prisma.aIExecution.aggregate({
+        where,
+        _sum: { costUsd: true, inputTokens: true, outputTokens: true },
+        _count: true,
+      }),
       prisma.editorialStrategy.findMany({
         where,
         orderBy: { createdAt: "desc" },
@@ -102,6 +106,37 @@ export async function GET(req: Request) {
     const linhasEmRevisao = stage["client_review"] ?? 0;
     const pecasComCliente = piece["aprovacao_cliente"] ?? 0;
 
+    // ── SIMULAÇÃO DE CUSTO POR MODELO ────────────────────────────────────────
+    // "E se todo o consumo de IA até agora tivesse rodado no modelo X?" — precifica
+    // o total de tokens já consumidos sob cada modelo, usando o mesmo price book do
+    // sistema (por 1k tokens). Só considera execuções que registraram tokens
+    // (planning + pesquisa); produções sem telemetria de token não entram na
+    // reprojeção mas continuam no custo real (custoTotalUsd).
+    const inTokens = aiTotal._sum.inputTokens ?? 0;
+    const outTokens = aiTotal._sum.outputTokens ?? 0;
+    // Preço por 1k tokens (fallback = valores do seed; sobrescrito pelo price book).
+    const PRICE_FALLBACK: Record<string, { in: number; out: number }> = {
+      "gpt-4o": { in: 0.005, out: 0.015 },
+      "claude-sonnet-5": { in: 0.003, out: 0.015 },
+    };
+    const priceRows = await prisma.aIPriceBook.findMany({
+      where: { model: { in: ["gpt-4o", "claude-sonnet-5"] }, effectiveTo: null },
+      orderBy: { effectiveFrom: "desc" },
+      select: { model: true, inputPricePer1k: true, outputPricePer1k: true },
+    });
+    const priceOf = (model: string) => {
+      const row = priceRows.find((p) => p.model === model);
+      return row
+        ? { in: row.inputPricePer1k, out: row.outputPricePer1k }
+        : PRICE_FALLBACK[model];
+    };
+    const projectCost = (model: string) => {
+      const p = priceOf(model);
+      return (inTokens / 1000) * p.in + (outTokens / 1000) * p.out;
+    };
+    const cost4o = projectCost("gpt-4o");
+    const costSonnet5 = projectCost("claude-sonnet-5");
+
     return ok({
       clients: {
         total: clientsTotal,
@@ -139,6 +174,16 @@ export async function GET(req: Request) {
         execucoesMes: aiMonth._count,
         custoTotalUsd: aiTotal._sum.costUsd ?? 0,
         execucoesTotal: aiTotal._count,
+        // Simulação "e se todo o consumo tivesse rodado no modelo X".
+        costSimulation: {
+          inputTokens: inTokens,
+          outputTokens: outTokens,
+          totalTokens: inTokens + outTokens,
+          gpt4oUsd: cost4o,
+          sonnet5Usd: costSonnet5,
+          economiaUsd: cost4o - costSonnet5,
+          economiaPct: cost4o > 0 ? ((cost4o - costSonnet5) / cost4o) * 100 : 0,
+        },
       },
       recentStrategies: recentStrategies.map((s) => ({
         id: s.id,
