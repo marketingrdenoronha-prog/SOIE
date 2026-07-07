@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@soie/db";
 import { env } from "@soie/config";
 import { hashPassword } from "@/server/auth";
-import { ok, handle, Errors } from "@/server/http";
+import { ok, handle, fail } from "@/server/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,20 +33,32 @@ export async function POST(req: Request) {
   return handle(async () => {
     // Aceita ADMIN_RESET_SECRET ou ADMIN_HARD_KEY (o que estiver definido).
     const secretEnv = env.ADMIN_RESET_SECRET || env.ADMIN_HARD_KEY;
-    // Desligada quando não há segredo configurado no ambiente.
-    if (!secretEnv || secretEnv.length < 8) throw Errors.notFound("Recurso");
+    // Mensagens explícitas para o operador saber exatamente o que corrigir.
+    if (!secretEnv) {
+      return fail("reset_not_configured", "Reset não configurado no servidor: defina a variável de ambiente ADMIN_HARD_KEY (ou ADMIN_RESET_SECRET) no projeto soie-web da Vercel e faça um novo deploy.", 503);
+    }
+    if (secretEnv.length < 8) {
+      return fail("reset_secret_too_short", "O segredo configurado (ADMIN_HARD_KEY) tem menos de 8 caracteres. Use um valor com 8+ caracteres e refaça o deploy.", 503);
+    }
 
     const { email, newPassword, secret } = input.parse(await req.json());
-    if (!safeEqual(secret, secretEnv)) throw Errors.unauthorized();
+    if (!safeEqual(secret, secretEnv)) {
+      return fail("wrong_secret", "Segredo de administrador incorreto. Use exatamente o VALOR configurado na env ADMIN_HARD_KEY na Vercel.", 401);
+    }
 
-    const user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
-    if (!user) throw Errors.notFound("Usuário");
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: email.trim(), mode: "insensitive" } },
+      select: { id: true, email: true },
+    });
+    if (!user) {
+      return fail("user_not_found", `Nenhuma conta encontrada com o e-mail "${email}". Confira se o e-mail está exatamente como no cadastro.`, 404);
+    }
 
     await prisma.user.update({
       where: { id: user.id },
       data: { passwordHash: hashPassword(newPassword) },
     });
 
-    return ok({ reset: true, email });
+    return ok({ reset: true, email: user.email });
   });
 }
