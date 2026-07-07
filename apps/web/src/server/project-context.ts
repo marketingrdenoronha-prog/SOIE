@@ -23,6 +23,9 @@ export async function assembleProjectContext(
       brand: {
         include: {
           brandVoices: { orderBy: { createdAt: "desc" }, take: 1 },
+          // Segmento/mercado do cliente — dá à IA o nicho REAL em vez de deixá-la
+          // inferir (ou confundir com o nome do cliente).
+          client: { select: { name: true, industry: true } },
         },
       },
       personas: {
@@ -218,6 +221,11 @@ export async function assembleProjectContext(
 
   const context: Record<string, unknown> = {
     business: {
+      client: brand.client?.name,
+      // Segmento/mercado do cliente. `brand` e `client` são a identidade da marca
+      // (não são o nicho); `niche` é o mercado em que ela atua — a IA deve falar
+      // COM o público desse nicho, nunca tratar o nome da marca/cliente como tema.
+      niche: brand.client?.industry ?? null,
       project: project.name,
       goal: project.goal,
       brand: brand.name,

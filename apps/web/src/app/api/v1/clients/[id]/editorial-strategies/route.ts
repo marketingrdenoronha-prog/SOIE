@@ -81,9 +81,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       .map((c) => c.comment)
       .join("\n");
 
+    // `niche` = o SEGMENTO/MERCADO do cliente (campo `industry`). NUNCA o nome do
+    // cliente: usar o nome aqui fazia a IA tratar o próprio nome como se fosse o
+    // nicho ("empresas de <Nome do Cliente>"), gerando conteúdo fora de contexto.
     const genCtx: GenerationContext = {
       brand: project.brand.name,
-      niche: project.brand.positioning ?? client.name,
+      niche: client.industry?.trim() || "seu mercado",
       objective: input.objective,
       observations: input.observations,
     };
@@ -144,7 +147,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 async function ensureClient(organizationId: string, clientId: string) {
   const client = await prisma.client.findFirst({
     where: { id: clientId, organizationId, deletedAt: null },
-    select: { id: true, name: true },
+    select: { id: true, name: true, industry: true },
   });
   if (!client) throw Errors.notFound("Cliente");
   return client;
