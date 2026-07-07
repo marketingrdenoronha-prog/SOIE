@@ -42,7 +42,7 @@ export default function LoginPage() {
     <div className="grid min-h-screen place-items-center bg-surface p-4">
       <div className="w-full max-w-sm rounded-2xl border border-border bg-elevated p-7">
         <div className="mb-6 flex items-center">
-          <Logo className="h-9 w-auto" />
+          <Logo className="h-[72px] w-auto" />
         </div>
         <h1 className="text-lg font-semibold">
           {mode === "register" ? "Criar conta" : "Entrar"}

@@ -89,7 +89,7 @@ export function ReviewClient({ token }: { token: string }) {
     <div className="min-h-screen bg-surface">
       <header className="border-b border-border bg-elevated">
         <div className="mx-auto flex max-w-3xl items-center gap-3 px-5 py-4">
-          <LogoMark className="h-8 w-8" />
+          <LogoMark className="h-16 w-16" />
           <div>
             <p className="text-sm font-semibold leading-tight">{data.brand}</p>
             <p className="text-xs text-muted">{data.project}</p>
