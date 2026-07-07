@@ -31,7 +31,8 @@ function safeEqual(a: string, b: string): boolean {
  */
 export async function POST(req: Request) {
   return handle(async () => {
-    const secretEnv = env.ADMIN_RESET_SECRET;
+    // Aceita ADMIN_RESET_SECRET ou ADMIN_HARD_KEY (o que estiver definido).
+    const secretEnv = env.ADMIN_RESET_SECRET || env.ADMIN_HARD_KEY;
     // Desligada quando não há segredo configurado no ambiente.
     if (!secretEnv || secretEnv.length < 8) throw Errors.notFound("Recurso");
 
