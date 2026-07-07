@@ -138,12 +138,32 @@ export class AnthropicHttpAdapter extends HttpAdapter {
     const data = await this.post(
       "https://api.anthropic.com/v1/messages",
       { "x-api-key": req.apiKey ?? this.apiKey, "anthropic-version": "2023-06-01" },
-      { model: req.model, max_tokens: req.maxTokens ?? DEFAULT_MAX_OUTPUT_TOKENS, system, messages },
+      {
+        model: req.model,
+        max_tokens: req.maxTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
+        system,
+        messages,
+        // Claude 4.x / Sonnet 5 ligam "thinking" adaptativo por padrão, o que
+        // insere um bloco de thinking ANTES do texto na resposta. Para tarefas
+        // de saída estruturada (JSON) não queremos isso: desligamos o thinking
+        // para o texto vir limpo e não estourar o max_tokens pensando.
+        thinking: { type: "disabled" },
+      },
     );
+    // A resposta é um array de blocos; o conteúdo útil é o(s) bloco(s) "text".
+    // Ler content[0] às cegas quebrava quando vinha um bloco de thinking na
+    // frente (texto vazio) → tudo caía no fallback demo.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const text = Array.isArray(data.content)
+      ? (data.content as any[])
+          .filter((b) => b?.type === "text" && typeof b.text === "string")
+          .map((b) => b.text)
+          .join("")
+      : (data.content?.[0]?.text ?? "");
     return {
       provider: this.provider,
       model: req.model,
-      text: data.content?.[0]?.text ?? "",
+      text,
       usage: {
         inputTokens: data.usage?.input_tokens ?? 0,
         outputTokens: data.usage?.output_tokens ?? 0,
