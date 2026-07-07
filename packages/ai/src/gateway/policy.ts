@@ -17,12 +17,12 @@ export const DEFAULT_MODELS: Record<AIProvider, string> = {
  * gateway never falls through to the next provider on its own; so the chain
  * must be built from real keys up front.
  *
- * Anthropic is listed first so that setting `ANTHROPIC_API_KEY` immediately makes
- * Claude Sonnet 5 the preferred model — a large jump in copy quality over gpt-4o
- * and gemini-1.5-pro at equal-or-lower cost. OpenAI/Gemini/DeepSeek still lead
- * when they're the only key configured (fallback), preserving offline/free tiers.
+ * SOIE roda EXCLUSIVAMENTE em Claude Sonnet 5: só `anthropic` participa da
+ * cadeia. gpt-4o, gemini e deepseek foram removidos de propósito — mesmo que a
+ * chave deles esteja setada, não são usados. Se a `ANTHROPIC_API_KEY` não estiver
+ * presente, cai no modo demo (sem custo), nunca em outro provedor pago.
  */
-const PREFERENCE_ORDER: AIProvider[] = ["anthropic", "openai", "gemini", "deepseek"];
+const PREFERENCE_ORDER: AIProvider[] = ["anthropic"];
 
 /**
  * Builds a ModelPolicy from the set of configured provider keys.
@@ -44,12 +44,10 @@ export function defaultModelPolicy(
   const chain: Array<{ provider: AIProvider; model: string }> =
     available.length > 0
       ? available.map((provider) => ({ provider, model: DEFAULT_MODELS[provider] }))
-      : // No keys configured anywhere: keep the historical stub chain so the
-        // orchestrator and pipelines still run offline.
-        [
-          { provider: "openai", model: DEFAULT_MODELS.openai },
-          { provider: "anthropic", model: DEFAULT_MODELS.anthropic },
-        ];
+      : // Sem chave: chain só com Anthropic (Sonnet 5). O runtime já cai em modo
+        // demo quando não há chave — este stub mantém orquestrador/pipelines
+        // rodando offline sem referenciar outro provedor.
+        [{ provider: "anthropic", model: DEFAULT_MODELS.anthropic }];
 
   if (override) {
     const rest = chain.filter(
