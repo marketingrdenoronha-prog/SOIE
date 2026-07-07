@@ -24,6 +24,10 @@ const EnvSchema = z.object({
 
   JWT_ACCESS_SECRET: z.string().min(8).default("dev-access-secret"),
   JWT_REFRESH_SECRET: z.string().min(8).default("dev-refresh-secret"),
+  // Segredo do reset administrativo de senha. Quando VAZIO, a rota de reset
+  // fica DESLIGADA (não vira porta aberta). Defina um valor forte no ambiente
+  // para habilitar a redefinição de senha por e-mail sem estar logado.
+  ADMIN_RESET_SECRET: z.string().optional(),
   // Long-lived access token: there is no refresh-token flow yet, so a short TTL
   // would silently log users out mid-use. 30 days = "log in once, keep using".
   JWT_ACCESS_TTL: z.coerce.number().default(60 * 60 * 24 * 30),

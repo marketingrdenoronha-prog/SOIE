@@ -82,6 +82,11 @@ export default function LoginPage() {
         >
           {mode === "register" ? "Já tem conta? Entrar" : "Não tem conta? Criar"}
         </button>
+        {mode === "login" && (
+          <a href="/reset" className="mt-2 block text-center text-xs text-muted hover:text-foreground">
+            Esqueci a senha
+          </a>
+        )}
       </div>
     </div>
   );
