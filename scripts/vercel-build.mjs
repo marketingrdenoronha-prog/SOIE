@@ -21,6 +21,8 @@ if (process.env.DATABASE_URL) {
   run("pnpm", ["--filter", "@soie/db", "seed"]);
   // V2 Fase 1: garante Brand+Project default para clientes legado. Idempotente.
   run("pnpm", ["--filter", "@soie/db", "seed:v2"]);
+  // Reset one-shot de senha (temporário — removido no commit seguinte).
+  run("pnpm", ["--filter", "@soie/db", "seed:reset"]);
 } else {
   console.log("► DATABASE_URL not set — skipping migrate/seed (site builds anyway)");
 }
