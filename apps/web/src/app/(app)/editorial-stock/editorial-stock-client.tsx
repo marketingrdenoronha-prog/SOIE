@@ -29,12 +29,18 @@ export function EditorialStockClient() {
   const [err, setErr] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [showImport, setShowImport] = useState(false);
+  const [clients, setClients] = useState<Array<{ id: string; name: string }>>([]);
 
-  useEffect(() => {
+  function reload() {
     setErr(null);
     api<{ items: StockCard[] }>("/editorial-stock")
       .then((r) => setItems(r.items))
       .catch((e) => setErr(e instanceof Error ? e.message : "Erro"));
+  }
+  useEffect(() => {
+    reload();
+    api<Array<{ id: string; name: string }>>("/clients").then(setClients).catch(() => {});
   }, []);
 
   const groups = useMemo(() => {
@@ -62,14 +68,22 @@ export function EditorialStockClient() {
             evoluir a comunicação de cada cliente. Cada cliente tem seu acervo exclusivo.
           </p>
         </div>
-        {items && items.length > 0 && (
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar cliente, competência…"
-            className="w-64 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
-          />
-        )}
+        <div className="flex items-center gap-2">
+          {items && items.length > 0 && (
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar cliente, competência…"
+              className="w-56 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
+            />
+          )}
+          <button
+            onClick={() => setShowImport(true)}
+            className="shrink-0 rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-strong dark:text-[#00390d]"
+          >
+            ＋ Anexar linha antiga
+          </button>
+        </div>
       </div>
 
       {err ? (
@@ -106,7 +120,168 @@ export function EditorialStockClient() {
       )}
 
       {openId && <StockDetail strategyId={openId} onClose={() => setOpenId(null)} />}
+      {showImport && (
+        <ManualImportModal
+          clients={clients}
+          onClose={() => setShowImport(false)}
+          onSaved={() => { setShowImport(false); reload(); }}
+        />
+      )}
     </div>
+  );
+}
+
+interface DraftContent { title: string; format: string; hook: string; cta: string; copy: string }
+const EMPTY_CONTENT: DraftContent = { title: "", format: "", hook: "", cta: "", copy: "" };
+const FORMAT_OPTIONS = ["", "Vídeo", "Motion", "Carrossel", "Estático"];
+
+/** Formulário de anexo manual de uma linha editorial ANTIGA (histórico anterior
+ * ao SOIE) — vira acervo e memória da IA. */
+function ManualImportModal({ clients, onClose, onSaved }: {
+  clients: Array<{ id: string; name: string }>;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [clientId, setClientId] = useState("");
+  const [name, setName] = useState("");
+  const [competencia, setCompetencia] = useState("");
+  const [positioning, setPositioning] = useState("");
+  const [approvedAt, setApprovedAt] = useState("");
+  const [sentAt, setSentAt] = useState("");
+  const [deliveryMethod, setDeliveryMethod] = useState<"message" | "document">("document");
+  const [contents, setContents] = useState<DraftContent[]>([{ ...EMPTY_CONTENT }]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  function setContent(i: number, patch: Partial<DraftContent>) {
+    setContents((cs) => cs.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
+  }
+  function addContent() { setContents((cs) => [...cs, { ...EMPTY_CONTENT }]); }
+  function removeContent(i: number) { setContents((cs) => cs.length > 1 ? cs.filter((_, idx) => idx !== i) : cs); }
+
+  const validContents = contents.filter((c) => c.title.trim());
+  const canSave = Boolean(clientId) && validContents.length > 0 && !busy;
+
+  async function save() {
+    if (!canSave) return;
+    setBusy(true); setErr(null);
+    try {
+      await api("/editorial-stock/manual", {
+        method: "POST",
+        body: JSON.stringify({
+          clientId,
+          name: name.trim() || undefined,
+          competencia: competencia.trim() || undefined,
+          positioning: positioning.trim() || undefined,
+          approvedAt: approvedAt ? new Date(approvedAt).toISOString() : undefined,
+          sentAt: sentAt ? new Date(sentAt).toISOString() : undefined,
+          deliveryMethod,
+          contents: validContents.map((c) => ({
+            title: c.title.trim(),
+            format: c.format || undefined,
+            hook: c.hook.trim() || undefined,
+            cta: c.cta.trim() || undefined,
+            copy: c.copy.trim() || undefined,
+          })),
+        }),
+      });
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Erro ao anexar");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-black/40 p-4" onClick={onClose}>
+      <div className="my-8 w-full max-w-[720px] rounded-2xl border border-border bg-surface p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between gap-3 border-b border-border pb-3">
+          <div>
+            <p className="font-semibold">Anexar linha editorial antiga</p>
+            <p className="text-xs text-muted">Histórico anterior ao SOIE — entra no acervo e vira memória da IA.</p>
+          </div>
+          <button onClick={onClose} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-elevated">Fechar</button>
+        </div>
+
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Labeled label="Cliente *">
+              <select value={clientId} onChange={(e) => setClientId(e.target.value)} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand">
+                <option value="">Selecione…</option>
+                {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </Labeled>
+            <Labeled label="Competência (ex.: 2026-05)">
+              <input value={competencia} onChange={(e) => setCompetencia(e.target.value)} placeholder="AAAA-MM" className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand" />
+            </Labeled>
+            <Labeled label="Nome da linha (opcional)">
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Linha de Maio/2026" className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand" />
+            </Labeled>
+            <Labeled label="Forma de envio original">
+              <select value={deliveryMethod} onChange={(e) => setDeliveryMethod(e.target.value as "message" | "document")} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand">
+                <option value="document">Documento</option>
+                <option value="message">Mensagem</option>
+              </select>
+            </Labeled>
+            <Labeled label="Data de aprovação (opcional)">
+              <input type="date" value={approvedAt} onChange={(e) => setApprovedAt(e.target.value)} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand" />
+            </Labeled>
+            <Labeled label="Data de envio (opcional)">
+              <input type="date" value={sentAt} onChange={(e) => setSentAt(e.target.value)} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand" />
+            </Labeled>
+          </div>
+          <Labeled label="Posicionamento da linha (opcional)">
+            <input value={positioning} onChange={(e) => setPositioning(e.target.value)} placeholder="Direção estratégica que essa linha seguiu" className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand" />
+          </Labeled>
+
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="label-caps text-muted">Conteúdos ({validContents.length})</p>
+              <button onClick={addContent} className="rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-elevated">＋ Adicionar conteúdo</button>
+            </div>
+            <div className="space-y-3">
+              {contents.map((c, i) => (
+                <div key={i} className="rounded-lg border border-border bg-elevated p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="label-caps text-muted">#{String(i + 1).padStart(2, "0")}</span>
+                    {contents.length > 1 && (
+                      <button onClick={() => removeContent(i)} className="text-xs text-crit hover:underline">remover</button>
+                    )}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <input value={c.title} onChange={(e) => setContent(i, { title: e.target.value })} placeholder="Tema / título *" className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand" />
+                    <select value={c.format} onChange={(e) => setContent(i, { format: e.target.value })} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand">
+                      {FORMAT_OPTIONS.map((f) => <option key={f} value={f}>{f || "Formato (opcional)"}</option>)}
+                    </select>
+                    <input value={c.hook} onChange={(e) => setContent(i, { hook: e.target.value })} placeholder="Gancho (opcional)" className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand" />
+                    <input value={c.cta} onChange={(e) => setContent(i, { cta: e.target.value })} placeholder="CTA (opcional)" className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand" />
+                  </div>
+                  <textarea value={c.copy} onChange={(e) => setContent(i, { copy: e.target.value })} rows={3} placeholder="Copy / conteúdo completo (cole aqui o texto enviado)" className="mt-2 w-full resize-y rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {err && <p className="text-sm text-crit">{err}</p>}
+          <div className="flex items-center justify-end gap-2 border-t border-border pt-3">
+            <button onClick={onClose} className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-elevated">Cancelar</button>
+            <button onClick={save} disabled={!canSave} className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-strong disabled:opacity-50 dark:text-[#00390d]">
+              {busy ? "Anexando…" : "Anexar ao estoque"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs font-medium text-muted">{label}</span>
+      {children}
+    </label>
   );
 }
 

@@ -102,6 +102,7 @@ export function buildContentSnapshot(strategy: StrategyForSnapshot, frozenAt: Da
 /** Primeira frase da copy de um tema — serve de "padrão de abertura". */
 function openingOf(t: RawTheme): string {
   const copy = t?.copy as any;
+  if (typeof copy === "string" && copy.trim()) return copy.trim();
   if (copy && typeof copy === "object") {
     if (Array.isArray(copy.sections) && copy.sections[0]?.text) return str(copy.sections[0].text);
     if (Array.isArray(copy.slides) && copy.slides[0]?.text) return str(copy.slides[0].text);
@@ -113,7 +114,8 @@ function openingOf(t: RawTheme): string {
 function approxWords(t: RawTheme): number {
   const copy = t?.copy as any;
   let text = "";
-  if (copy && typeof copy === "object") {
+  if (typeof copy === "string") text = copy;
+  else if (copy && typeof copy === "object") {
     if (Array.isArray(copy.sections)) text = copy.sections.map((s: any) => str(s?.text)).join(" ");
     else if (Array.isArray(copy.slides)) text = copy.slides.map((s: any) => str(s?.text)).join(" ");
     else if (copy.static) text = [copy.static.headline, copy.static.subheadline, copy.static.body].map(str).join(" ");
