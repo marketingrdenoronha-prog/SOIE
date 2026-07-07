@@ -21,7 +21,7 @@ export const FORMAT_CATALOG: Record<DeliverableType, FormatSpec> = {
     type: "video_script",
     agent: "scriptwriter",
     instruction:
-      "Escreva um roteiro de vídeo com gancho nos 3 primeiros segundos, cenas numeradas (visual, narração/fala, texto em tela, b-roll e duração por cena), CTA final, legenda e hashtags. Ajuste o ritmo ao canal.",
+      "Escreva um roteiro de vídeo com gancho nos 3 primeiros segundos, cenas numeradas (visual, narração/fala, texto em tela, b-roll e duração por cena), CTA final, legenda e hashtags. Ajuste o ritmo ao canal. A NARRAÇÃO/FALA de cada cena deve ser escrita por extenso, palavra por palavra (não resuma nem use tópicos): o roteiro precisa ter texto falado suficiente para 40 a 120 segundos de locução — no mínimo ~130 palavras somando todas as cenas, idealmente 180–320. Roteiro curto é erro; se ficar raso, aprofunde antes de entregar.",
     label: (c) =>
       c === "tiktok" ? "Roteiro TikTok" : c === "youtube" ? "Roteiro YouTube" : "Roteiro Reels",
   },
@@ -29,7 +29,7 @@ export const FORMAT_CATALOG: Record<DeliverableType, FormatSpec> = {
     type: "motion_script",
     agent: "motion",
     instruction:
-      "Escreva um roteiro de motion design: cenas com timing (0:00–0:03), elementos animados, texto em tela, transições e notas de animação; sugira mood da trilha e paleta.",
+      "Escreva um roteiro de motion design: cenas com timing (0:00–0:03), elementos animados, texto em tela, transições e notas de animação; sugira mood da trilha e paleta. Inclua a NARRAÇÃO/locução completa de cada cena, escrita por extenso palavra por palavra (não resuma): o roteiro precisa ter texto falado suficiente para 40 a 120 segundos de locução — no mínimo ~130 palavras somando as cenas, idealmente 180–320. Se ficar curto, aprofunde antes de entregar.",
     label: () => "Roteiro Motion",
   },
   design_brief: {

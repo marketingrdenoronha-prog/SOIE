@@ -69,6 +69,7 @@ function VideoScript({ s }: { s: any }) {
   return (
     <div className="space-y-4">
       {pick(s, "theme", "tema") && <Field label="Tema"><b>{text(pick(s, "theme", "tema"))}</b></Field>}
+      {pick(s, "estimatedDuration", "duracao", "duration") && <Field label="Duração estimada">{text(pick(s, "estimatedDuration", "duracao", "duration"))}</Field>}
       {pick(s, "hook", "gancho") && <Field label="Gancho (0–3s)"><b>{text(pick(s, "hook", "gancho"))}</b></Field>}
       <div className="space-y-3">
         {scenes.map((sc: any, i: number) => (
@@ -98,6 +99,7 @@ function MotionScript({ s }: { s: any }) {
   const palette = arr(pick(s, "palette", "paleta"));
   return (
     <div className="space-y-4">
+      {pick(s, "estimatedDuration", "duracao", "duration") && <Field label="Duração estimada">{text(pick(s, "estimatedDuration", "duracao", "duration"))}</Field>}
       <div className="space-y-3">
         {scenes.map((sc: any, i: number) => (
           <div key={i} className="rounded-lg border border-border p-3">
@@ -107,6 +109,7 @@ function MotionScript({ s }: { s: any }) {
             </div>
             {pick(sc, "elements", "elementos") && <p className="mt-1 text-sm"><span className="text-muted">Elementos: </span>{text(pick(sc, "elements", "elementos"))}</p>}
             {pick(sc, "onScreenText", "texto") && <p className="text-sm"><span className="text-muted">Texto: </span>{text(pick(sc, "onScreenText", "texto"))}</p>}
+            {pick(sc, "voiceover", "narracao", "fala") && <p className="text-sm"><span className="text-muted">Narração: </span>{text(pick(sc, "voiceover", "narracao", "fala"))}</p>}
             {pick(sc, "transition", "transicao") && <p className="text-sm text-muted">Transição: {text(pick(sc, "transition", "transicao"))}</p>}
             {pick(sc, "motionNotes", "animacao") && <p className="text-sm text-muted">Animação: {text(pick(sc, "motionNotes", "animacao"))}</p>}
           </div>

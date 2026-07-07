@@ -162,24 +162,29 @@ export function demoDeliverableSpec(type: DeliverableType, channel: Channel, bri
   const b = brief?.trim() ? ` (${brief.trim().slice(0, 80)})` : "";
   switch (type) {
     case "video_script":
+      // Narração por extenso, ~60–90s de locução (roteiro robusto, não resumo).
       return {
         hook: `Você está perdendo dinheiro sem saber${b ? " —" + b : ""}?`,
+        estimatedDuration: "1min10s",
         scenes: [
-          { n: 1, seconds: 3, visual: "Close no rosto, corte seco", voiceover: "Se você faz isso, para agora.", onScreenText: "PARE" },
-          { n: 2, seconds: 6, visual: "Demonstração do problema", voiceover: "A maioria comete esse erro e nem percebe.", onScreenText: "O erro nº 1" },
-          { n: 3, seconds: 8, visual: "Você mostrando a solução", voiceover: "O jeito certo é assim, ó.", brollNotes: "Mostrar prova/resultado" },
-          { n: 4, seconds: 4, visual: "Chamada final", voiceover: "Comenta 'EU QUERO' que eu te explico.", onScreenText: "EU QUERO 👇" },
+          { n: 1, seconds: 5, visual: "Close no rosto, corte seco", voiceover: "Para tudo por três segundos, porque isso aqui provavelmente explica por que o seu resultado vem em soluço. Se você faz o que eu vou mostrar agora, você está deixando dinheiro na mesa sem perceber.", onScreenText: "PARA" },
+          { n: 2, seconds: 16, visual: "Demonstração do problema no dia a dia", voiceover: "A cena é sempre a mesma: você se dedica, posta, testa uma ideia atrás da outra, investe tempo e dinheiro — e mesmo assim o retorno não vira previsibilidade. Num mês aparece, no outro some. E a maioria comete esse erro sem nem perceber, porque acha que o problema é o produto, quando na verdade é a estrutura por trás dele.", onScreenText: "O erro nº 1" },
+          { n: 3, seconds: 22, visual: "Você mostrando a solução, passo a passo", voiceover: "O jeito certo é organizar três coisas na ordem certa. Primeiro, clareza: o cliente precisa entender em segundos o que você resolve e para quem. Segundo, prova: casos, bastidores e números reais que sustentam a promessa. Terceiro, consistência: aparecer com método, no ritmo certo, com uma mensagem que evolui em vez de se repetir. Quando esses três pontos jogam juntos, cada conteúdo acumula em cima do anterior.", brollNotes: "Mostrar prova/resultado real na tela" },
+          { n: 4, seconds: 12, visual: "Chamada final, olhando pra câmera", voiceover: "Ou seja: não é sobre trabalhar mais, é sobre trabalhar com estrutura. Foi assim que os nossos clientes saíram do improviso para um crescimento que dá pra prever. Se você quer o passo a passo disso aplicado no seu negócio, comenta 'EU QUERO' que eu te explico.", onScreenText: "EU QUERO 👇" },
         ],
         cta: "Comenta 'EU QUERO' para receber o passo a passo",
         caption: "Salva esse vídeo para não esquecer. 🔖",
         hashtags: ["marketing", "dicas", channel],
       };
     case "motion_script":
+      // Locução completa por cena, ~50–70s no total.
       return {
+        estimatedDuration: "1min00s",
         scenes: [
-          { n: 1, timing: "0:00–0:03", elements: "Logo entra com fade", onScreenText: "3 motivos", transition: "corte", motionNotes: "ease-out suave" },
-          { n: 2, timing: "0:03–0:08", elements: "Ícones surgem em sequência", onScreenText: "Motivo 1, 2 e 3", transition: "slide", motionNotes: "stagger 0.2s" },
-          { n: 3, timing: "0:08–0:12", elements: "CTA pulsando", onScreenText: "Fale com a gente", transition: "zoom", motionNotes: "loop sutil" },
+          { n: 1, timing: "0:00–0:06", elements: "Logo entra com fade + headline", onScreenText: "3 coisas que mudam o jogo", transition: "corte", motionNotes: "ease-out suave", voiceover: "Existem três coisas que separam quem cresce de quem fica no mesmo lugar — e nenhuma delas depende de sorte." },
+          { n: 2, timing: "0:06–0:24", elements: "Ícones surgem em sequência (clareza, prova, consistência)", onScreenText: "Clareza · Prova · Consistência", transition: "slide", motionNotes: "stagger 0.2s", voiceover: "A primeira é clareza: o cliente tem que entender em segundos o que você resolve. A segunda é prova: casos e resultados reais que sustentam o que você promete. E a terceira é consistência: aparecer com método, no ritmo certo, sem repetir sempre a mesma coisa." },
+          { n: 3, timing: "0:24–0:45", elements: "Gráfico de crescimento previsível", onScreenText: "Do improviso à previsibilidade", transition: "fade", motionNotes: "curva subindo suave", voiceover: "Quando esses três pontos passam a jogar juntos, o resultado deixa de ser sorte e começa a se repetir. É o que faz a comunicação virar previsibilidade em vez de esforço solto." },
+          { n: 4, timing: "0:45–0:58", elements: "CTA pulsando", onScreenText: "Fale com a gente", transition: "zoom", motionNotes: "loop sutil", voiceover: "Se você quer estruturar isso no seu negócio, chama a gente agora e vamos montar o seu plano." },
         ],
         soundtrackMood: "Upbeat, corporativo leve",
         palette: ["#0F172A", "#6366F1", "#22D3EE"],

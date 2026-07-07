@@ -69,15 +69,29 @@ function objectiveNote(ctx: GenerationContext, fallback: string): string {
   return ctx.objective?.trim() ? `${fallback} · Alinhado ao objetivo da linha: ${ctx.objective.trim()}` : fallback;
 }
 
-/** Vídeo/Motion: copy completa gravável (30s a 1min20s), 5 partes. */
+/** Vídeo/Motion: narração completa gravável (40s a 2min), 5 partes. A copy é a
+ * fala palavra por palavra — desenvolvida o bastante para 40–120s de locução
+ * (mín. ~130 palavras, ideal 180–320), nunca um resumo. */
 function scriptCopy(i: number, ctx: GenerationContext, isMotion: boolean): StructuredCopy {
-  const { title, obj } = angle(i, ctx);
-  const durations = ["45s", "55s", "1min05s", "1min15s", "50s"];
+  const { title } = angle(i, ctx);
+  const durations = ["50s", "1min05s", "1min20s", "1min40s", "55s"];
   const sections = [
-    { label: "Gancho", text: `${title}? Presta atenção nos próximos segundos porque isso muda como você enxerga ${ctx.niche}.` },
-    { label: "Conexão", text: `Se você trabalha com ${ctx.niche}, provavelmente já sentiu na pele: muito esforço e pouco retorno previsível. A gente entende essa realidade — e ela tem solução.` },
-    { label: "Desenvolvimento", text: `O que quase ninguém explica é que o problema raramente está no produto, e sim na estrutura por trás dele. Quando você organiza processo, comunicação e prova de resultado, o jogo vira. Na ${ctx.brand} a gente aplica exatamente isso, passo a passo, sem achismo.` },
-    { label: "Virada", text: `Aqui está o ponto que gera o insight: não é sobre trabalhar mais, é sobre trabalhar com método. Foi assim que nossos clientes saíram do improviso para resultado consistente${obj ? "" : ""}.` },
+    {
+      label: "Gancho",
+      text: `${title}? Segura aí os próximos segundos, porque isso muda a forma como você enxerga ${ctx.niche} — e provavelmente explica por que tanta coisa que você tenta não engata como deveria.`,
+    },
+    {
+      label: "Conexão",
+      text: `Se você vive de ${ctx.niche}, essa cena é familiar: você se dedica, testa uma ideia atrás da outra, posta, investe tempo e dinheiro — e mesmo assim o resultado vem em soluço, num mês aparece e no outro some. Cansa. E o pior é a sensação de que o esforço não está virando previsibilidade. A gente convive com isso todos os dias na ${ctx.brand}, então não vou te dar fórmula mágica: vou te mostrar o que realmente trava.`,
+    },
+    {
+      label: "Desenvolvimento",
+      text: `O que quase ninguém te conta é que o problema raramente está no seu produto ou no seu talento — está na estrutura por trás dele. Comunicação sem clareza, oferta que o cliente não entende em segundos, ausência de prova real e uma frequência que oscila. Quando esses quatro pontos ficam soltos, cada ação começa do zero e nada acumula. Na ${ctx.brand} a gente organiza isso na ordem certa: primeiro deixa nítido o que você resolve e para quem, depois estrutura a prova (casos, bastidores, números reais) e só então define um ritmo de conteúdo que sustenta a mensagem em vez de repetir a mesma coisa. É método, passo a passo, sem achismo.`,
+    },
+    {
+      label: "Virada",
+      text: `E aqui está o insight que vira a chave: não é sobre trabalhar mais, é sobre trabalhar com estrutura. No instante em que clareza, prova e consistência passam a jogar juntas, o resultado deixa de depender de sorte e começa a se repetir. Foi exatamente assim que os nossos clientes saíram do improviso — daquele "vamos ver se pega" — para um crescimento que dá pra prever e planejar.`,
+    },
     { label: "CTA", text: ctaFor(i, ctx) },
   ];
   return {
@@ -125,7 +139,7 @@ function makeTheme(format: FormatKey, i: number, ctx: GenerationContext): Genera
   const hook = format === "carrossel" ? (copy.slides?.[0]?.text ?? title)
     : format === "estatico" ? (copy.static?.headline ?? title)
     : (copy.sections?.[0]?.text ?? title);
-  const prod = format === "video" ? "Roteiro gravável de 30s a 1min20s. Gravar em vertical, cortes secos a cada frase-chave, legenda queimada. Foco no rosto no gancho."
+  const prod = format === "video" ? "Roteiro gravável de 40s a 2min (narração completa por extenso). Gravar em vertical, cortes secos a cada frase-chave, legenda queimada. Foco no rosto no gancho."
     : format === "motion" ? "Animar as 5 partes com ritmo; texto na tela sincronizado com a locução; trilha upbeat leve; paleta da marca."
     : format === "carrossel" ? "1 ideia por slide, headline em alto contraste no slide 1, seta de deslize, CTA destacado no último slide."
     : "Peça única de feed (1080x1350). Headline forte, corpo legível, CTA claro; usar identidade visual da marca.";
@@ -187,9 +201,10 @@ export function validateThemeReady(t: GeneratedTheme): string[] {
   } else if (key === "estatico") {
     if (!t.copy.static?.body || t.copy.static.body.length < 120) issues.push("estático raso (corpo curto)");
   } else {
-    const words = (t.copy.sections ?? []).map((s) => s.text).join(" ").split(/\s+/).length;
+    const words = (t.copy.sections ?? []).map((s) => s.text).join(" ").split(/\s+/).filter(Boolean).length;
     if ((t.copy.sections ?? []).length < 5) issues.push("roteiro sem as 5 partes");
-    if (words < 60) issues.push("roteiro curto (< ~30s)");
+    // Locução natural ≈ 2,2–2,5 palavras/s → 40s exige ~110–130 palavras.
+    if (words < 130) issues.push("roteiro curto para 40–120s (< ~130 palavras)");
   }
   return issues;
 }
