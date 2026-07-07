@@ -711,6 +711,10 @@ model EditorialStrategy {
   // com copy completa.
   contentSnapshot   Json?
   contentCount      Int        @default(0)  // qtd de conteúdos (cache p/ cards)
+  // Portal público de aprovação da PRODUÇÃO (peça por peça), gerado
+  // automaticamente após a aprovação interna. Distinto do link de aprovação da
+  // linha editorial (reviewLinks/EditorialReviewLink).
+  productionPortalToken String? @unique
   createdAt         DateTime   @default(now())
 
   project         Project                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -972,6 +976,17 @@ model Deliverable {
   themeId        String?           @db.Uuid
   // V2: marcada quando o operador clica "Marcar entregue" (fim do fluxo).
   deliveredAt    DateTime?
+  // ── PRODUÇÃO (pós-aprovação da linha editorial) ──────────────────────────
+  // Ciclo de vida da peça na esteira de produção humana (designer/audiovisual),
+  // independente do `status` do pipeline de IA:
+  //   aguardando → em_producao → produzida → aprovada_interna →
+  //   aprovacao_cliente → aprovada
+  // Reprovação (interna ou do cliente) devolve SÓ esta peça para em_producao.
+  productionStatus String  @default("aguardando")
+  assignedToId     String? @db.Uuid  // responsável atual (designer/filmaker/CS)
+  // Histórico append-only por peça: status, uploads, comentários, aprovações.
+  // [{ at, type, from?, to?, byId?, byName?, note? }] — nada é apagado.
+  history          Json    @default("[]")
   createdBy      String?           @db.Uuid
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
@@ -980,12 +995,59 @@ model Deliverable {
   reviewLinks ReviewLink[]
   comments    ReviewComment[]
   originTheme Theme?        @relation("ThemeDeliverable")
+  assets         DeliverableAsset[]
+  threadComments DeliverableComment[]
 
   @@index([organizationId])
   @@index([projectId])
   @@index([status])
   @@index([themeId])
   @@map("deliverables")
+}
+
+/// Arquivo/entregável de uma peça, versionado. Cada novo envio cria uma nova
+/// versão preservando as anteriores. Armazenado por LINK (Drive/WeTransfer/
+/// YouTube/imagem direta) — centraliza a referência, versão e aprovação no SOIE
+/// sem depender de storage de binário. `fileId` fica reservado para upload
+/// binário futuro (File/Blob).
+model DeliverableAsset {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  deliverableId  String   @db.Uuid
+  version        Int      @default(1)
+  kind           String   @default("link") // link | image | video | file
+  url            String
+  name           String?
+  note           String?
+  fileId         String?  @db.Uuid
+  uploadedById   String?  @db.Uuid
+  createdAt      DateTime @default(now())
+
+  deliverable Deliverable @relation(fields: [deliverableId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([deliverableId])
+  @@map("deliverable_assets")
+}
+
+/// Fio de comentários de uma peça — comunicação entre CS, Designer e
+/// Audiovisual. Append-only (nunca apagado). Distinto de ReviewComment (que é a
+/// decisão de aprovar/ajustar).
+model DeliverableComment {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  deliverableId  String   @db.Uuid
+  authorId       String?  @db.Uuid
+  authorName     String?
+  role           String?  // cs | designer | audiovisual | cliente
+  body           String
+  createdAt      DateTime @default(now())
+
+  deliverable Deliverable @relation(fields: [deliverableId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([deliverableId])
+  @@map("deliverable_comments")
 }
 
 /// Open, tokenized link shared with the client to review a deliverable. No
