@@ -30,7 +30,9 @@ export default function LoginPage() {
           : { email, password };
       const res = await api<Tokens>(path, { method: "POST", body: JSON.stringify(payload) });
       setToken(res.accessToken);
-      router.push("/dashboard");
+      // Volta ao destino pretendido (?next=), se for um caminho interno seguro.
+      const next = new URLSearchParams(window.location.search).get("next");
+      router.push(next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao entrar");
     } finally {
