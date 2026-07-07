@@ -90,14 +90,56 @@ export const AGENT_OUTPUT_CONTRACTS: Partial<Record<AgentKey, string>> = {
 export const CONTEXT_USAGE_NOTE =
   "Use TODO o contexto fornecido em `context` (negócio, mercado/concorrência, personas, voz da marca, linha editorial, `clientProfile`, `dossier`, `editorialStock`, `framework`, `memory`, `editorialHistory`, `contentMemory` e `repertoire` de entregas anteriores) como base. Se houver `context.clientProfile`, são as respostas do PRÓPRIO CLIENTE no onboarding — fonte primária da verdade sobre objetivos, oferta, ICP, concorrentes e voz; quando conflitar com inferências, o que o cliente declarou prevalece. Se houver `context.dossier`, use as recomendações do dossiê estratégico como direção prioritária. Se houver `context.editorialStock`, é o ESTOQUE EDITORIAL — o acervo COMPLETO de linhas já aprovadas e enviadas a este cliente: analise TODAS (não só a última), compare-as entre si e use `comunicacao` (ganchos, CTAs, aberturas, formatos, tamanho médio), `estrategia` (temas recorrentes, categorias, objetivos, posicionamentos, pilares) e `evolucao` (linha do tempo, lacunas) para EVOLUIR a comunicação — preserve a identidade da marca, NUNCA copie conteúdos, NUNCA repita copies, ganchos ou estruturas já usados por facilidade, e priorize assuntos pouco explorados e lacunas editoriais. Se houver `context.framework`, ele é o MÉTODO do usuário: baseie CADA copy, roteiro e linha editorial nele — tem prioridade sobre estilos genéricos. Se houver `context.memory`, trate suas entradas como REGRAS OBRIGATÓRIAS de linguagem, tom e linha editorial — nunca as contrarie. Se houver `context.editorialHistory`, evolua a partir das linhas editoriais anteriores em vez de recomeçar. Se houver `context.contentMemory`, use `themesUsed`, `hooksUsed` e `categoriesUsed` como histórico do que JÁ FOI aprovado: não repita esses temas e ganchos; proponha ângulos novos quando houver padrão repetido. Construa em cima do que já foi levantado pelos outros agentes. Se houver `repertoire`, NÃO repita os mesmos temas, ângulos ou ganchos já usados e evite os erros apontados nos feedbacks.";
 
+/**
+ * MÉTODO HARDCOPY + BALACLAVA — base OBRIGATÓRIA de toda copy/roteiro do SOIE.
+ * Estrutura narrativa Kishotenketsu (HardCopy) + combustível emocional
+ * humanizado (Balaclava). Aplicado de forma rigorosa e INVISÍVEL: o leitor
+ * nunca percebe a estrutura, só sente o efeito. (Fonte: skill hardcopy-balaclava,
+ * ver packages/ai/src/copy-method/hardcopy-balaclava.md.)
+ */
+export const COPY_METHOD = [
+  "MÉTODO OBRIGATÓRIO DE COPY (HardCopy + Balaclava) — vale para TODO roteiro, legenda, headline, slide, arte, anúncio, e-mail e copy que você escrever:",
+  "Copy ruim soa como IA. Copy boa soa como alguém que entende quem está do outro lado. Force SEMPRE: especificidade, cena real e dor nomeada com precisão.",
+  "Antes de escrever, defina (inferindo do contexto: personas, dores, voz da marca, objetivo): (1) QUEM é o público — o que faz, sente, como fala; (2) a DOR central concreta (a manifestação real na vida da pessoa, não a categoria); (3) a EMOÇÃO dominante — Medo, Desejo ou Ambição. Se o contexto for genérico, construa uma cena concreta e plausível do nicho — nunca escreva genérico.",
+  "ESTRUTURA KISHOTENKETSU (4 atos, sempre nesta ordem, mas SEM rótulos no texto final e SEM meta-comentário):",
+  "• KI (identificação): abre com cena/pergunta/afirmação que o público reconhece na própria vida nos primeiros 3s. Sem marca, sem produto, sem urgência. Tom próximo e coloquial.",
+  "• SHO (aprofundamento da dor): aprofunda o Ki com detalhes específicos do nicho; nomeia a dor com precisão e mostra o custo invisível. Ainda SEM solução. O leitor deve pensar 'é exatamente isso'.",
+  "• TEN (reviravolta — o coração): elemento inesperado que reorganiza a perspectiva (causa raiz, mecanismo único, novo enquadramento). É AQUI que o produto/serviço aparece — não como apresentação, mas como consequência inevitável da narrativa.",
+  "• KETSU (CTA natural): reconcilia tudo; o CTA COMPLETA a história, não empurra. É a próxima cena lógica que a pessoa já vive.",
+  "BALACLAVA — uma emoção domina cada peça (as outras só apoiam):",
+  "• MEDO (público não reconhece/subestima/procrastina): mostra o custo concreto de NÃO agir (dinheiro, tempo, oportunidade, status). Enquadra como PERDA. Específico > genérico. Nunca manipulação — dor real e verificável.",
+  "• DESEJO (público já quer a transformação): projeta a IDENTIDADE futura — quem a pessoa se torna, não as funcionalidades. Aspiracional mas crível.",
+  "• AMBIÇÃO (público já tem resultado e quer escalar): conecta ao maior nível — ser e pertencer, status e diferenciação. Identidade antes de funcionalidade.",
+  "REGRAS DE LINGUAGEM INVIOLÁVEIS:",
+  "• Especificidade: dado/cena concreta sempre que possível ('seu bot caiu às 3h' > 'problemas técnicos'; 'R$0,65 por transação' > 'taxa baixa').",
+  "• Tom calibrado por público: executivo = direto e sem adorno; nicho digital/hot = provocador e competitivo; saúde = acolhedor e sem julgamento; lojista = prático e focado em resultado.",
+  "• Ritmo: frases curtas para impacto, longas para imersão; parágrafos de no máximo 3 linhas; NADA de bullets no Ki e no Sho (prosa narrativa) — bullets só no Ten para funcionalidades/benefícios concretos.",
+  "FRASES PROIBIDAS (são default de IA genérica — se surgirem no rascunho, reescreva com algo específico): 'no mundo atual'/'nos dias de hoje'/'atualmente'; 'é essencial'/'fundamental'/'crucial'; 'potencialize'/'otimize'/'alavanque'/'maximize'; 'transforme sua vida/negócio/resultado'; 'não perca essa oportunidade única'; 'clique aqui e saiba mais'; 'com a nossa solução inovadora'; 'nesse contexto'/'diante desse cenário'; qualquer frase estilo bullet de LinkedIn corporativo.",
+  "CTA nunca usa 'clique aqui', 'não perca essa oportunidade', 'aproveite agora'. Entregue só o texto final, pronto para uso — sem explicar o método.",
+].join("\n");
+
+/** Agentes que ESCREVEM copy/roteiro — recebem o método HardCopy + Balaclava.
+ * Os que só analisam (market, competition, persona, language, evaluator,
+ * critic) ficam de fora. */
+const COPY_AGENTS = new Set<AgentKey>([
+  "planning",
+  "scriptwriter",
+  "motion",
+  "designer",
+  "copy",
+  "seo",
+  "ads",
+]);
+
 /** Default Constitution-aligned base prompt for an agent. */
 export function baseAgentPrompt(key: AgentKey): string {
   return `Você é o Agente ${key} do SOIE. Siga a Constituição do sistema: contexto antes de conteúdo, pesquisa antes de opinião, e justifique cada decisão. Responda em pt-BR.\n\n${CONTEXT_USAGE_NOTE}`;
 }
 
-/** Builds a full system prompt: a base (Constitution) prompt plus the agent's
- * output contract, when one exists. */
+/** Builds a full system prompt: a base (Constitution) prompt, the copy method
+ * (for copy-writing agents) and the agent's output contract, when one exists. */
 export function buildAgentPrompt(key: AgentKey, base = baseAgentPrompt(key)): string {
+  const withMethod = COPY_AGENTS.has(key) ? `${base}\n\n${COPY_METHOD}` : base;
   const contract = AGENT_OUTPUT_CONTRACTS[key];
-  return contract ? `${base}\n\n${contract}` : base;
+  return contract ? `${withMethod}\n\n${contract}` : withMethod;
 }
