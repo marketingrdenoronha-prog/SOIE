@@ -17,12 +17,12 @@ export const DEFAULT_MODELS: Record<AIProvider, string> = {
  * gateway never falls through to the next provider on its own; so the chain
  * must be built from real keys up front.
  *
- * OpenAI is listed first so that setting only `OPENAI_API_KEY` immediately makes
- * gpt-4o the preferred model (matches the "just set OPENAI_API_KEY" story),
- * while still allowing Anthropic/Gemini/DeepSeek to lead when they're the ones
- * configured.
+ * Anthropic is listed first so that setting `ANTHROPIC_API_KEY` immediately makes
+ * Claude Sonnet 5 the preferred model — a large jump in copy quality over gpt-4o
+ * and gemini-1.5-pro at equal-or-lower cost. OpenAI/Gemini/DeepSeek still lead
+ * when they're the only key configured (fallback), preserving offline/free tiers.
  */
-const PREFERENCE_ORDER: AIProvider[] = ["openai", "anthropic", "gemini", "deepseek"];
+const PREFERENCE_ORDER: AIProvider[] = ["anthropic", "openai", "gemini", "deepseek"];
 
 /**
  * Builds a ModelPolicy from the set of configured provider keys.
