@@ -2,14 +2,15 @@ import { prisma } from "@soie/db";
 import { z } from "zod";
 import { requireAuth } from "@/server/auth";
 import { ok, handle, Errors } from "@/server/http";
-import { runAgent } from "@/server/ai-runtime";
 import { assembleProjectContext } from "@/server/project-context";
 import { resolveDefaultProjectId } from "@/server/client-scope";
-import { coerceTheme, type GenerationContext } from "@/server/editorial-content";
-import { toFormatKey } from "@/lib/editorial-format";
+import { type GenerationContext } from "@/server/editorial-content";
+import { generateEditorialThemes, bucketsToLines } from "@/server/editorial-generation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Geração em lotes com top-up faz várias chamadas de IA — precisa de janela.
+export const maxDuration = 300;
 
 const createInput = z.object({
   brief: z.string().max(4000).optional(),
@@ -79,33 +80,40 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       ?.filter((c) => c.decision === "request_changes" && c.comment)
       .map((c) => c.comment)
       .join("\n");
-    const result = await runAgent("planning", {
-      brand: project.brand.name,
-      client: client.name,
-      positioning: project.brand.positioning,
-      objectives: project.brand.objectives,
-      personas: project.personas.map((p) => ({ name: p.name, pains: p.pains.map((x) => x.description) })),
-      version: nextVersion,
-      parentStrategyId: previous?.id,
-      clientFeedback: feedback || undefined,
-      objective: input.objective,
-      observations: input.observations,
-      formatCounts: input.formatCounts,
-      brief: [input.brief, input.observations, feedback ? `Feedback do cliente na versão anterior:\n${feedback}` : ""]
-        .filter(Boolean)
-        .join("\n\n"),
-    }, context, { organizationId: org });
 
-    // Cada tema sai PRONTO PARA PRODUÇÃO: coage/valida a saída (real ou demo)
-    // para o shape padronizado, preenchendo faltas com profundidade.
     const genCtx: GenerationContext = {
       brand: project.brand.name,
       niche: project.brand.positioning ?? client.name,
       objective: input.objective,
       observations: input.observations,
     };
-    let themeIndex = 0;
 
+    // Geração com GARANTIA DE QUANTIDADE: lotes + top-up até bater o solicitado
+    // por formato; a rede de segurança completa o que faltar. Nunca sai parcial.
+    const gen = await generateEditorialThemes({
+      baseInput: {
+        brand: project.brand.name,
+        client: client.name,
+        positioning: project.brand.positioning,
+        objectives: project.brand.objectives,
+        personas: project.personas.map((p) => ({ name: p.name, pains: p.pains.map((x) => x.description) })),
+        version: nextVersion,
+        parentStrategyId: previous?.id,
+        clientFeedback: feedback || undefined,
+        objective: input.objective,
+        observations: input.observations,
+        brief: [input.brief, input.observations, feedback ? `Feedback do cliente na versão anterior:\n${feedback}` : ""]
+          .filter(Boolean)
+          .join("\n\n"),
+      },
+      requested: input.formatCounts,
+      genCtx,
+      context,
+      organizationId: org,
+      now: Date.now(),
+    });
+
+    const { meta } = gen;
     const strategy = await prisma.editorialStrategy.create({
       data: {
         organizationId: org,
@@ -113,50 +121,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         projectId,
         version: nextVersion,
         parentStrategyId: previous?.id,
-        positioning: result.positioning,
-        pillars: result.pillars ?? [],
-        objectives: result.objectives ?? {},
+        positioning: meta.positioning,
+        pillars: (meta.pillars as object) ?? [],
+        objectives: (meta.objectives as object) ?? {},
         // Conteúdo demo (sem chave de IA ou provider caiu) não pode se passar
         // por estratégia real: marca no rationale e rebaixa a confiança.
-        rationale: result._demo ? `[MODO DEMO — configure uma chave de IA] ${result.rationale ?? ""}`.trim() : result.rationale,
-        confidence: result._demo ? "low" : ((result.confidence as "high" | "medium" | "low") ?? "medium"),
+        rationale: meta._demo ? `[MODO DEMO — configure uma chave de IA] ${meta.rationale ?? ""}`.trim() : meta.rationale,
+        confidence: meta._demo ? "low" : ((meta.confidence as "high" | "medium" | "low") ?? "medium"),
         status: "draft",
-        editorialLines: {
-          create: (result.lines ?? []).map((line: {
-            name: string; objective: string; funnelStage: string; platforms?: string[]; categories?: { name: string; themes?: { title: string; channel?: string; format?: string; copy?: unknown }[] }[];
-          }) => ({
-            organizationId: org,
-            name: line.name,
-            objective: line.objective as never,
-            funnelStage: line.funnelStage as never,
-            platforms: line.platforms ?? [],
-            categories: {
-              create: (line.categories ?? []).map((cat) => ({
-                organizationId: org,
-                name: cat.name,
-                themes: {
-                  create: (cat.themes ?? []).map((raw) => {
-                    const t = coerceTheme(raw, genCtx, themeIndex);
-                    const priority = themeIndex;
-                    themeIndex += 1;
-                    return {
-                      organizationId: org,
-                      title: t.title,
-                      channel: t.channel,
-                      format: t.format,
-                      copy: t.copy as never,
-                      strategicObjective: t.strategicObjective,
-                      hook: t.hook,
-                      cta: t.cta,
-                      productionNotes: t.productionNotes,
-                      priority,
-                    };
-                  }),
-                },
-              })),
-            },
-          })),
-        },
+        editorialLines: { create: bucketsToLines(gen.themesByFormat, org) },
       },
       include: {
         editorialLines: { include: { categories: { include: { themes: true } } } },
