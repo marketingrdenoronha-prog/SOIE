@@ -27,6 +27,28 @@ interface RawTheme {
 interface RawCategory { name?: unknown; themes?: RawTheme[] }
 interface RawLine { name?: unknown; objective?: unknown; funnelStage?: unknown; platforms?: unknown; categories?: RawCategory[] }
 
+/**
+ * Remove bytes NUL e demais caracteres de controle C0 (exceto \t \n \r) de
+ * forma recursiva. O Postgres rejeita o byte NUL (\u0000) tanto em colunas
+ * `text` quanto em `jsonb` (erro 22P05 "unsupported Unicode escape sequence"), e
+ * a extracao de PDF/Word frequentemente injeta esses bytes. Sanitiza no limite
+ * de escrita para que qualquer origem de texto (documento, colagem, API) fique
+ * segura.
+ */
+export function stripNul<T>(value: T): T {
+  if (typeof value === "string") {
+    // eslint-disable-next-line no-control-regex
+    return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "") as unknown as T;
+  }
+  if (Array.isArray(value)) return value.map((v) => stripNul(v)) as unknown as T;
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = stripNul(v);
+    return out as T;
+  }
+  return value;
+}
+
 export interface StrategyForSnapshot {
   version: number;
   positioning: string | null;

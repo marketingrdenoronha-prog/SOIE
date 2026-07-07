@@ -1,5 +1,6 @@
 import { requireAuth } from "@/server/auth";
 import { ok, handle, Errors } from "@/server/http";
+import { stripNul } from "@/server/editorial-stock";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,7 +57,9 @@ export async function POST(req: Request) {
       throw Errors.badRequest(`Não foi possível extrair o texto de "${name}". Tente colar o conteúdo manualmente.`);
     }
 
-    text = text.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+    // Remove bytes NUL/controle que PDF/Word costumam injetar — o Postgres os
+    // rejeita ao salvar (22P05) e sujam o textarea de revisão.
+    text = stripNul(text).replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
     if (!text) throw Errors.badRequest(`Nenhum texto encontrado em "${name}".`);
 
     // Título sugerido = nome do arquivo sem extensão.

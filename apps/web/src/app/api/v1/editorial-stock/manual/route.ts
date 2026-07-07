@@ -3,7 +3,7 @@ import { prisma } from "@soie/db";
 import { requireAuth } from "@/server/auth";
 import { ok, handle, Errors } from "@/server/http";
 import { resolveDefaultProjectId } from "@/server/client-scope";
-import { buildContentSnapshot, type StrategyForSnapshot } from "@/server/editorial-stock";
+import { buildContentSnapshot, stripNul, type StrategyForSnapshot } from "@/server/editorial-stock";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,7 +43,9 @@ const manualInput = z.object({
 export async function POST(req: Request) {
   return handle(async () => {
     const { org, sub } = requireAuth(req);
-    const input = manualInput.parse(await req.json());
+    // Sanitiza bytes NUL/controle vindos de PDF/Word extraído (Postgres rejeita
+    //  em text/jsonb → erro 22P05) antes de qualquer escrita.
+    const input = stripNul(manualInput.parse(await req.json()));
 
     const client = await prisma.client.findFirst({
       where: { id: input.clientId, organizationId: org, deletedAt: null },
