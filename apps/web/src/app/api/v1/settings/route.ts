@@ -1,15 +1,20 @@
 import { z } from "zod";
 import { prisma } from "@soie/db";
 import { requireAuth } from "@/server/auth";
+import { ensureDefaultRoles } from "@/server/members";
 import { ok, handle } from "@/server/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Organization overview: org info, members and current plan. */
+/** Organization overview: org info, members, roles e as permissões do chamador. */
 export async function GET(req: Request) {
   return handle(async () => {
-    const { org } = requireAuth(req);
+    const { org, sub } = requireAuth(req);
+    // Garante o conjunto base de papéis (owner/admin/editor/designer/…) antes de
+    // listar, para que a tela de equipe sempre tenha o que escolher.
+    await ensureDefaultRoles(org);
+
     const [organization, memberships, roles] = await Promise.all([
       prisma.organization.findUnique({
         where: { id: org },
@@ -21,13 +26,24 @@ export async function GET(req: Request) {
         where: { organizationId: org },
         include: {
           user: { select: { id: true, name: true, email: true, lastLoginAt: true } },
-          role: { select: { name: true } },
+          role: { select: { id: true, name: true, permissions: true } },
         },
         orderBy: { createdAt: "asc" },
       }),
-      prisma.role.findMany({ where: { organizationId: org }, orderBy: { name: "asc" } }),
+      prisma.role.findMany({
+        where: { organizationId: org },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, permissions: true, isSystem: true },
+      }),
     ]);
-    return ok({ organization, memberships, roles });
+
+    // Permissões do próprio usuário logado — a UI usa para mostrar/ocultar os
+    // controles de gestão de equipe.
+    const me = memberships.find((m) => m.user.id === sub);
+    const myPermissions = Array.isArray(me?.role?.permissions) ? (me!.role!.permissions as string[]) : [];
+    const canManageMembers = myPermissions.includes("*") || myPermissions.includes("members:manage");
+
+    return ok({ organization, memberships, roles, myPermissions, canManageMembers, meId: sub });
   });
 }
 
