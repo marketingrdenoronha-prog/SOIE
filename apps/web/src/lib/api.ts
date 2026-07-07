@@ -40,3 +40,25 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   }
   return res.json() as Promise<T>;
 }
+
+/** Upload de arquivo (multipart). Não define content-type — o browser injeta o
+ * boundary correto. Anexa o bearer token igual ao `api`. */
+export async function apiUpload<T>(path: string, file: File): Promise<T> {
+  const token = getToken();
+  const body = new FormData();
+  body.append("file", file);
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    body,
+    headers: token ? { authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!res.ok) {
+    if (res.status === 401 && token && typeof window !== "undefined") {
+      clearToken();
+      if (!window.location.pathname.startsWith("/login")) window.location.href = "/login";
+    }
+    const b = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+    throw new Error(b?.error?.message ?? `Erro ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}

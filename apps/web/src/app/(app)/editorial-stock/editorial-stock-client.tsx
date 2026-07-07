@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { api, apiUpload } from "@/lib/api";
 import { text } from "@/lib/render";
 import { EditorialDoc } from "@/components/editorial-doc";
 
@@ -151,13 +151,43 @@ function ManualImportModal({ clients, onClose, onSaved }: {
   const [deliveryMethod, setDeliveryMethod] = useState<"message" | "document">("document");
   const [contents, setContents] = useState<DraftContent[]>([{ ...EMPTY_CONTENT }]);
   const [busy, setBusy] = useState(false);
+  const [extracting, setExtracting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   function setContent(i: number, patch: Partial<DraftContent>) {
     setContents((cs) => cs.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
   }
   function addContent() { setContents((cs) => [...cs, { ...EMPTY_CONTENT }]); }
   function removeContent(i: number) { setContents((cs) => cs.length > 1 ? cs.filter((_, idx) => idx !== i) : cs); }
+
+  /** Sobe um documento (PDF/Word/texto), extrai o texto e preenche um conteúdo
+   * com ele — o operador revisa e completa antes de salvar. */
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permite re-selecionar o mesmo arquivo
+    if (!file) return;
+    setExtracting(true); setErr(null); setNotice(null);
+    try {
+      const { title, text, chars } = await apiUpload<{ title: string; text: string; chars: number }>(
+        "/editorial-stock/extract",
+        file,
+      );
+      setContents((cs) => {
+        // Preenche o primeiro conteúdo vazio; senão adiciona um novo.
+        const idx = cs.findIndex((c) => !c.title.trim() && !c.copy.trim());
+        const filled: DraftContent = { ...EMPTY_CONTENT, title, copy: text };
+        if (idx >= 0) return cs.map((c, i) => (i === idx ? filled : c));
+        return [...cs, filled];
+      });
+      if (!name.trim()) setName(title);
+      setNotice(`Texto extraído de “${file.name}” (${chars.toLocaleString("pt-BR")} caracteres). Revise e complete os campos antes de salvar.`);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Erro ao ler o documento");
+    } finally {
+      setExtracting(false);
+    }
+  }
 
   const validContents = contents.filter((c) => c.title.trim());
   const canSave = Boolean(clientId) && validContents.length > 0 && !busy;
@@ -205,6 +235,21 @@ function ManualImportModal({ clients, onClose, onSaved }: {
         </div>
 
         <div className="space-y-4">
+          {/* Anexar documento: PDF, Word (.docx) ou texto → extrai e preenche. */}
+          <div className="rounded-lg border border-dashed border-border bg-elevated p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-medium">Anexar documento</p>
+                <p className="text-xs text-muted">PDF, Word (.docx) ou texto — o SOIE extrai o conteúdo e preenche abaixo. Opcional.</p>
+              </div>
+              <label className={`cursor-pointer rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface ${extracting ? "pointer-events-none opacity-50" : ""}`}>
+                {extracting ? "Lendo documento…" : "Escolher arquivo"}
+                <input type="file" accept=".pdf,.docx,.txt,.md,.csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" onChange={onFile} className="hidden" />
+              </label>
+            </div>
+            {notice && <p className="mt-2 rounded-md bg-ok/10 px-2 py-1.5 text-xs text-ok">{notice}</p>}
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-2">
             <Labeled label="Cliente *">
               <select value={clientId} onChange={(e) => setClientId(e.target.value)} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand">
