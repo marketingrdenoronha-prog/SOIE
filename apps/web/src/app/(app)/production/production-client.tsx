@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { upload } from "@vercel/blob/client";
+import { api, getToken } from "@/lib/api";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { ThemeContent } from "@/components/editorial-doc";
 
@@ -447,31 +448,65 @@ function PieceRow({ p, canProduce, onReload }: { p: Piece; canProduce: boolean; 
   );
 }
 
-/** Painel de produção de UMA peça na coluna do Designer: anexar arquivos
- * (arte, vídeo, link) + mover a peça no fluxo (produção → aprovação interna). */
+/** Regras de upload por formato da peça: só arquivo (sem link), tipo travado. */
+function uploadSpec(type: string): { accept: string; multiple: boolean; kind: "image" | "video"; label: string; hint: string } {
+  if (type === "video_script" || type === "motion_script") {
+    return { accept: ".mov,.mp4,video/quicktime,video/mp4", multiple: false, kind: "video", label: "Anexar vídeo", hint: "MOV ou MP4 · qualquer tamanho" };
+  }
+  if (type === "carousel") {
+    return { accept: ".png,image/png", multiple: true, kind: "image", label: "Anexar telas do carrossel", hint: "1 PNG por tela · pode selecionar vários" };
+  }
+  return { accept: ".png,image/png", multiple: false, kind: "image", label: "Anexar arte", hint: "PNG" };
+}
+
+/** Painel de produção de UMA peça na coluna do Designer: fazer UPLOAD dos
+ * arquivos finais (arte PNG, telas de carrossel, vídeo MOV/MP4) direto para o
+ * Vercel Blob + mover a peça no fluxo (produção → aprovação interna). */
 function PieceProduction({ d, onReload }: {
   d: NonNullable<Piece["deliverable"]>;
   onReload: () => Promise<void> | void;
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [url, setUrl] = useState("");
-  const [name, setName] = useState("");
-  const [kind, setKind] = useState<"image" | "video" | "file" | "link">("image");
-  const [note, setNote] = useState("");
+  const [progress, setProgress] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const spec = uploadSpec(d.type);
 
-  async function attach() {
-    if (!url.trim()) { setErr("Cole o link do arquivo (Drive, Dropbox, URL da arte/vídeo…)."); return; }
+  async function onFiles(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
+    const selected = Array.from(fileList);
     setBusy(true); setErr(null);
     try {
-      await api(`/deliverables/${d.id}/assets`, {
-        method: "POST",
-        body: JSON.stringify({ url: url.trim(), name: name.trim() || undefined, kind, note: note.trim() || undefined }),
-      });
-      setUrl(""); setName(""); setNote("");
+      const uploaded: Array<{ url: string; name: string; kind: string }> = [];
+      for (let i = 0; i < selected.length; i++) {
+        const file = selected[i]!;
+        setProgress(selected.length > 1 ? `Enviando ${i + 1}/${selected.length}: ${file.name}` : `Enviando ${file.name}…`);
+        const blob = await upload(`producao/${d.id}/${file.name}`, file, {
+          access: "public",
+          handleUploadUrl: "/api/v1/blob/upload",
+          multipart: spec.kind === "video",
+          contentType: file.type || undefined,
+          clientPayload: JSON.stringify({ deliverableId: d.id }),
+          headers: { authorization: `Bearer ${getToken() ?? ""}` },
+          onUploadProgress: ({ percentage }) => {
+            setProgress(
+              selected.length > 1
+                ? `Enviando ${i + 1}/${selected.length}: ${file.name} (${Math.round(percentage)}%)`
+                : `Enviando ${file.name}… ${Math.round(percentage)}%`,
+            );
+          },
+        });
+        uploaded.push({ url: blob.url, name: file.name, kind: spec.kind });
+      }
+      setProgress("Salvando…");
+      await api(`/deliverables/${d.id}/assets`, { method: "POST", body: JSON.stringify({ files: uploaded }) });
+      if (fileRef.current) fileRef.current.value = "";
       await onReload();
-    } catch (e) { setErr(e instanceof Error ? e.message : "Erro ao anexar"); }
-    finally { setBusy(false); }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Erro ao enviar arquivo");
+    } finally {
+      setBusy(false); setProgress(null);
+    }
   }
 
   async function status(action: string, actionNote?: string) {
@@ -495,29 +530,26 @@ function PieceProduction({ d, onReload }: {
 
       {d.assets.length > 0 && <AssetList assets={d.assets} />}
 
-      {/* Anexar arte / vídeo / arquivo por link. */}
-      <div className="space-y-2 rounded-md border border-dashed border-border p-2.5">
-        <p className="text-[11px] font-medium text-muted">Anexar arte, vídeo ou arquivo</p>
-        <div className="flex flex-wrap gap-1.5">
-          {(["image", "video", "file", "link"] as const).map((k) => (
-            <button key={k} onClick={() => setKind(k)}
-              className={`rounded-md border px-2 py-1 text-[11px] ${kind === k ? "border-brand bg-brand/10 font-semibold text-brand-strong dark:text-brand" : "border-border hover:bg-surface"}`}>
-              {k === "image" ? "🖼 Arte" : k === "video" ? "🎬 Vídeo" : k === "file" ? "📄 Arquivo" : "🔗 Link"}
-            </button>
-          ))}
-        </div>
-        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Cole o link (Drive, Dropbox, URL pública…)"
-          className="w-full rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-brand" />
-        <div className="flex flex-wrap gap-2">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome (opcional)"
-            className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-brand" />
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Observação (opcional)"
-            className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-brand" />
-        </div>
-        <button onClick={attach} disabled={busy}
-          className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-strong disabled:opacity-50 dark:text-[#00390d]">
-          {busy ? "Enviando…" : "Anexar arquivo"}
-        </button>
+      {/* Upload dos arquivos finais — só arquivo, tipo travado por formato. */}
+      <div className="space-y-2 rounded-md border border-dashed border-border p-3 text-center">
+        <input
+          ref={fileRef}
+          type="file"
+          accept={spec.accept}
+          multiple={spec.multiple}
+          disabled={busy}
+          onChange={(e) => onFiles(e.target.files)}
+          className="hidden"
+          id={`file-${d.id}`}
+        />
+        <label
+          htmlFor={`file-${d.id}`}
+          className={`inline-flex cursor-pointer items-center gap-2 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-strong dark:text-[#00390d] ${busy ? "pointer-events-none opacity-50" : ""}`}
+        >
+          {spec.kind === "video" ? "🎬" : "🖼"} {busy ? "Enviando…" : spec.label}
+        </label>
+        <p className="text-[11px] text-muted">{spec.hint}</p>
+        {progress && <p className="text-[11px] text-brand-strong dark:text-brand">{progress}</p>}
       </div>
 
       {err && <p className="text-xs text-crit">{err}</p>}
@@ -571,15 +603,28 @@ function AssetList({ assets }: { assets: Asset[] }) {
   const shown = assets.filter((a) => a.version === latest);
   return (
     <div className="space-y-1.5">
-      <p className="text-[11px] font-medium text-muted">Arquivos anexados {latest > 1 && <span className="text-muted/70">(v{latest})</span>}</p>
-      {shown.map((a) => (
-        <a key={a.id} href={a.url} target="_blank" rel="noreferrer"
-          className="flex items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs hover:bg-elevated">
-          <span>{a.kind === "image" ? "🖼" : a.kind === "video" ? "🎬" : a.kind === "file" ? "📄" : "🔗"}</span>
-          <span className="min-w-0 flex-1 truncate">{a.name || a.url}</span>
-          <span className="text-muted">↗</span>
-        </a>
-      ))}
+      <p className="text-[11px] font-medium text-muted">
+        Arquivos enviados {shown.length > 1 && <span className="text-muted/70">({shown.length})</span>}
+        {latest > 1 && <span className="text-muted/70"> · v{latest}</span>}
+      </p>
+      <div className="grid grid-cols-3 gap-1.5">
+        {shown.map((a) => (
+          <a key={a.id} href={a.url} target="_blank" rel="noreferrer" title={a.name || a.url}
+            className="group relative block overflow-hidden rounded-md border border-border bg-surface">
+            {a.kind === "image" ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={a.url} alt={a.name || ""} className="aspect-square w-full object-cover" />
+            ) : a.kind === "video" ? (
+              <video src={a.url} className="aspect-square w-full object-cover" muted />
+            ) : (
+              <span className="flex aspect-square w-full items-center justify-center text-lg">📄</span>
+            )}
+            <span className="absolute inset-x-0 bottom-0 truncate bg-black/50 px-1 py-0.5 text-[9px] text-white opacity-0 group-hover:opacity-100">
+              {a.name || "arquivo"}
+            </span>
+          </a>
+        ))}
+      </div>
     </div>
   );
 }

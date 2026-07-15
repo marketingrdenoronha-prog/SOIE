@@ -7,12 +7,20 @@ import { pushPieceEvent } from "@/server/production-flow";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const input = z.object({
+const assetItem = z.object({
   url: z.string().url().max(2000),
   name: z.string().max(300).optional(),
   kind: z.enum(["link", "image", "video", "file"]).optional(),
   note: z.string().max(1000).optional(),
 });
+
+// Aceita um único arquivo OU um lote (carrossel = vários PNGs numa mesma
+// versão). O lote inteiro compartilha o mesmo número de versão, então o portal
+// do cliente mostra todas as telas do carrossel juntas.
+const input = z.union([
+  assetItem,
+  z.object({ files: z.array(assetItem).min(1).max(30) }),
+]);
 
 /** GET: arquivos enviados da peça, versão mais recente primeiro. */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -34,6 +42,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const { org, sub } = requireAuth(req);
     const { id } = await params;
     const data = input.parse(await req.json());
+    const files = "files" in data ? data.files : [data];
 
     const piece = await prisma.deliverable.findFirst({
       where: { id, organizationId: org },
@@ -49,18 +58,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const version = (last?.version ?? 0) + 1;
     const user = await prisma.user.findUnique({ where: { id: sub }, select: { name: true } });
 
-    const [asset] = await prisma.$transaction([
-      prisma.deliverableAsset.create({
-        data: {
+    const label =
+      files.length === 1 ? files[0]!.name || files[0]!.url : `${files.length} arquivos`;
+
+    await prisma.$transaction([
+      prisma.deliverableAsset.createMany({
+        data: files.map((f) => ({
           organizationId: org,
           deliverableId: id,
           version,
-          kind: data.kind ?? "link",
-          url: data.url,
-          name: data.name ?? null,
-          note: data.note ?? null,
+          kind: f.kind ?? "link",
+          url: f.url,
+          name: f.name ?? null,
+          note: f.note ?? null,
           uploadedById: sub,
-        },
+        })),
       }),
       prisma.deliverable.update({
         where: { id },
@@ -69,11 +81,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             type: "asset",
             byId: sub,
             byName: user?.name ?? null,
-            note: `Arquivo v${version}: ${data.name || data.url}`,
+            note: `Arquivo v${version}: ${label}`,
           }),
         },
       }),
     ]);
-    return ok({ asset }, 201);
+
+    const assets = await prisma.deliverableAsset.findMany({
+      where: { organizationId: org, deliverableId: id, version },
+      orderBy: { createdAt: "asc" },
+    });
+    return ok({ version, assets }, 201);
   });
 }
