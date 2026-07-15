@@ -290,6 +290,7 @@ function SidePanel({ line, onClose, onMove, onStart, onReload, busy }: {
   const [tab, setTab] = useState<"info" | "history" | "pieces">(
     line.productionStage === "design" ? "pieces" : "info",
   );
+  const [schedOpen, setSchedOpen] = useState(false);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onClose}>
@@ -338,12 +339,19 @@ function SidePanel({ line, onClose, onMove, onStart, onReload, busy }: {
             </button>
           )}
           {line.productionStage === "to_post" && (
-            <p className="rounded-lg border border-ok/40 bg-ok/10 p-3 text-sm text-ok">
-              ✓ Pronto para publicar. Todas as artes, vídeos, legendas e arquivos finais estão na aba Peças.
-            </p>
+            <div className="space-y-3">
+              <p className="rounded-lg border border-ok/40 bg-ok/10 p-3 text-sm text-ok">
+                ✓ Tudo aprovado pelo cliente. Agora é agendar as postagens.
+              </p>
+              <button onClick={() => setSchedOpen(true)}
+                className="w-full rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-strong dark:text-[#00390d]">
+                📅 Agendar postagens
+              </button>
+            </div>
           )}
         </div>
       </div>
+      {schedOpen && <ScheduleModal line={line} onClose={() => setSchedOpen(false)} />}
     </div>
   );
 }
@@ -783,4 +791,246 @@ function FinalChecklist({ line, onMove, busy }: { line: Line; onMove: (id: strin
 
 function statusLabel(status: string): string {
   return ({ draft: "Rascunho", pending_client: "Aguardando cliente", approved: "Aprovada", changes_requested: "Ajuste pedido" } as Record<string, string>)[status] ?? status;
+}
+
+// ---------------------------------------------------------------------------
+// Agendamento de postagens (aba "A Postar")
+// ---------------------------------------------------------------------------
+
+interface SchedPiece {
+  deliverableId: string;
+  title: string;
+  channel: string;
+  type: string;
+  brief: string | null;
+  hook: string | null;
+  cta: string | null;
+  assets: Array<{ kind: string; url: string; name: string | null }>;
+  schedule: { channel: string; caption: string | null; scheduledFor: string | null; status: string; externalId: string | null; error: string | null } | null;
+}
+interface SchedData {
+  strategyId: string;
+  clientId: string | null;
+  version: number;
+  social: { configured: boolean; connected: boolean; accounts: Array<{ accountId: string; platform: string; name: string | null }> };
+  pieces: SchedPiece[];
+}
+interface Row { channel: string; caption: string; scheduledFor: string /* datetime-local */ }
+
+const CONNECT_PLATFORMS = ["instagram", "facebook", "tiktok", "linkedin", "youtube"] as const;
+
+function toLocalInput(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Tela de agendamento: por peça, data/hora + legenda (IA ou manual) + canal;
+ * conecta as redes do cliente e agenda tudo no Zernio. */
+function ScheduleModal({ line, onClose }: { line: Line; onClose: () => void }) {
+  const [data, setData] = useState<SchedData | null>(null);
+  const [rows, setRows] = useState<Record<string, Row>>({});
+  const [err, setErr] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [captionBusy, setCaptionBusy] = useState<string | null>(null);
+
+  async function load() {
+    setErr(null);
+    try {
+      const d = await api<SchedData>(`/editorial-strategies/${line.id}/schedule`);
+      setData(d);
+      const r: Record<string, Row> = {};
+      for (const p of d.pieces) {
+        r[p.deliverableId] = {
+          channel: p.schedule?.channel ?? p.channel,
+          caption: p.schedule?.caption ?? "",
+          scheduledFor: toLocalInput(p.schedule?.scheduledFor ?? null),
+        };
+      }
+      setRows(r);
+    } catch (e) { setErr(e instanceof Error ? e.message : "Erro"); }
+  }
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  function setRow(id: string, patch: Partial<Row>) {
+    setRows((prev) => ({ ...prev, [id]: { ...prev[id]!, ...patch } }));
+  }
+
+  async function connect(platform: string) {
+    if (!line.clientId) return;
+    setBusy(`connect:${platform}`); setErr(null);
+    try {
+      const r = await api<{ url: string }>(`/clients/${line.clientId}/social/connect`, { method: "POST", body: JSON.stringify({ platform }) });
+      window.open(r.url, "_blank", "noopener");
+      setMsg("Abrimos a autorização em outra aba. Depois de conectar, clique em “Atualizar contas”.");
+    } catch (e) { setErr(e instanceof Error ? e.message : "Erro ao conectar"); }
+    finally { setBusy(null); }
+  }
+
+  async function genCaption(p: SchedPiece) {
+    setCaptionBusy(p.deliverableId); setErr(null);
+    try {
+      const r = await api<{ caption: string }>(`/deliverables/${p.deliverableId}/caption`, { method: "POST", body: JSON.stringify({ channel: rows[p.deliverableId]?.channel }) });
+      setRow(p.deliverableId, { caption: r.caption });
+    } catch (e) { setErr(e instanceof Error ? e.message : "Erro ao gerar legenda"); }
+    finally { setCaptionBusy(null); }
+  }
+
+  async function save(): Promise<boolean> {
+    setErr(null);
+    const items = Object.entries(rows).map(([deliverableId, r]) => ({
+      deliverableId,
+      channel: r.channel,
+      caption: r.caption || undefined,
+      scheduledFor: r.scheduledFor ? new Date(r.scheduledFor).toISOString() : null,
+    }));
+    await api(`/editorial-strategies/${line.id}/schedule`, { method: "PUT", body: JSON.stringify({ items }) });
+    return true;
+  }
+
+  async function onSave() {
+    setBusy("save"); setMsg(null);
+    try { await save(); setMsg("Agendamento salvo."); }
+    catch (e) { setErr(e instanceof Error ? e.message : "Erro ao salvar"); }
+    finally { setBusy(null); }
+  }
+
+  async function onPublish() {
+    setBusy("publish"); setMsg(null); setErr(null);
+    try {
+      await save();
+      const r = await api<{ scheduled: number; skipped: number; failures: Array<{ error: string }> }>(
+        `/editorial-strategies/${line.id}/schedule/publish`, { method: "POST" },
+      );
+      setMsg(`${r.scheduled} agendada(s) no Zernio${r.failures.length ? ` · ${r.failures.length} falha(s): ${r.failures[0].error}` : ""}.`);
+      await load();
+    } catch (e) { setErr(e instanceof Error ? e.message : "Erro ao agendar"); }
+    finally { setBusy(null); }
+  }
+
+  const accounts = data?.social.accounts ?? [];
+
+  return (
+    <div className="fixed inset-0 z-[60] flex justify-center overflow-y-auto bg-black/50 p-4" onClick={onClose}>
+      <div className="my-4 h-max w-full max-w-3xl rounded-xl border border-border bg-elevated shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 rounded-t-xl border-b border-border bg-elevated px-5 py-4">
+          <div>
+            <p className="text-base font-semibold">📅 Agendar postagens</p>
+            <p className="text-xs text-muted">{line.clientName} · {line.lineName} · V{line.version}</p>
+          </div>
+          <button onClick={onClose} className="rounded-md border border-border px-2 py-1 text-sm hover:bg-surface">✕</button>
+        </div>
+
+        <div className="space-y-5 p-5">
+          {err && <p className="rounded-md border border-crit/40 bg-crit/10 p-2 text-sm text-crit">{err}</p>}
+          {msg && <p className="rounded-md border border-ok/40 bg-ok/10 p-2 text-sm text-ok">{msg}</p>}
+
+          {/* Conexão das redes do cliente. */}
+          <section className="rounded-lg border border-border bg-surface p-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold">Redes do cliente</p>
+              <button onClick={load} className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-elevated">Atualizar contas</button>
+            </div>
+            {data && !data.social.configured ? (
+              <p className="mt-2 text-xs text-warn">
+                Publicação automática não configurada. Defina a chave <code>ZERNIO_API_KEY</code> nas variáveis do projeto (veja o tutorial em docs/TUTORIAL-AGENDAMENTO.md). Você ainda pode salvar o plano de agendamento abaixo.
+              </p>
+            ) : (
+              <>
+                {accounts.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {accounts.map((a) => (
+                      <span key={a.accountId} className="rounded-full bg-ok/15 px-2 py-0.5 text-[11px] text-ok">✓ {a.platform}{a.name ? ` · ${a.name}` : ""}</span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs text-muted">Nenhuma conta conectada ainda. Conecte cada rede do cliente:</p>
+                )}
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {CONNECT_PLATFORMS.map((pl) => (
+                    <button key={pl} onClick={() => connect(pl)} disabled={busy === `connect:${pl}`}
+                      className="rounded-md border border-border px-2.5 py-1 text-[11px] hover:bg-elevated disabled:opacity-50">
+                      {busy === `connect:${pl}` ? "…" : `Conectar ${pl}`}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </section>
+
+          {/* Peças. */}
+          {data === null ? (
+            <p className="text-sm text-muted">Carregando…</p>
+          ) : data.pieces.length === 0 ? (
+            <p className="text-sm text-muted">Nenhuma peça produzida nesta linha.</p>
+          ) : (
+            <div className="space-y-3">
+              {data.pieces.map((p) => {
+                const r = rows[p.deliverableId];
+                const art = p.assets.find((a) => a.kind === "image") ?? p.assets[0];
+                return (
+                  <div key={p.deliverableId} className="flex gap-3 rounded-lg border border-border bg-surface p-3">
+                    <div className="h-20 w-20 shrink-0 overflow-hidden rounded-md border border-border bg-elevated">
+                      {art ? (art.kind === "video"
+                        // eslint-disable-next-line jsx-a11y/media-has-caption
+                        ? <video src={art.url} className="h-full w-full object-cover" muted />
+                        // eslint-disable-next-line @next/next/no-img-element
+                        : <img src={art.url} alt="" className="h-full w-full object-cover" />)
+                        : <span className="flex h-full w-full items-center justify-center text-xs text-muted">sem arte</span>}
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="truncate text-sm font-medium">{p.title}</p>
+                        {p.schedule?.status === "scheduled" && <span className="shrink-0 rounded-full bg-ok/15 px-2 py-0.5 text-[10px] text-ok">agendada</span>}
+                        {p.schedule?.status === "failed" && <span className="shrink-0 rounded-full bg-crit/15 px-2 py-0.5 text-[10px] text-crit">falhou</span>}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <label className="text-[11px] text-muted">
+                          Data/hora
+                          <input type="datetime-local" value={r?.scheduledFor ?? ""} onChange={(e) => setRow(p.deliverableId, { scheduledFor: e.target.value })}
+                            className="mt-0.5 block rounded-md border border-border bg-surface px-2 py-1 text-sm outline-none focus:border-brand" />
+                        </label>
+                        <label className="text-[11px] text-muted">
+                          Canal
+                          <input value={r?.channel ?? ""} onChange={(e) => setRow(p.deliverableId, { channel: e.target.value })}
+                            className="mt-0.5 block w-32 rounded-md border border-border bg-surface px-2 py-1 text-sm outline-none focus:border-brand" />
+                        </label>
+                      </div>
+                      <div>
+                        <div className="mb-1 flex items-center justify-between">
+                          <span className="text-[11px] text-muted">Legenda</span>
+                          <button onClick={() => genCaption(p)} disabled={captionBusy === p.deliverableId}
+                            className="rounded-md border border-border px-2 py-0.5 text-[11px] hover:bg-elevated disabled:opacity-50">
+                            {captionBusy === p.deliverableId ? "Gerando…" : "✨ Gerar com IA"}
+                          </button>
+                        </div>
+                        <textarea value={r?.caption ?? ""} onChange={(e) => setRow(p.deliverableId, { caption: e.target.value })} rows={3}
+                          placeholder="Legenda da postagem (gere com IA ou escreva)"
+                          className="w-full rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-brand" />
+                      </div>
+                      {p.schedule?.error && <p className="text-[11px] text-crit">{p.schedule.error}</p>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="sticky bottom-0 flex flex-wrap items-center justify-end gap-2 rounded-b-xl border-t border-border bg-elevated px-5 py-4">
+          <button onClick={onSave} disabled={busy !== null}
+            className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-surface disabled:opacity-50">
+            {busy === "save" ? "Salvando…" : "Salvar plano"}
+          </button>
+          <button onClick={onPublish} disabled={busy !== null || !data?.social.connected}
+            title={!data?.social.connected ? "Conecte as redes do cliente para agendar" : ""}
+            className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-strong disabled:opacity-50 dark:text-[#00390d]">
+            {busy === "publish" ? "Agendando…" : "Agendar no Zernio →"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }

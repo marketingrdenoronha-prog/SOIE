@@ -1047,6 +1047,45 @@ model AssetBlob {
   @@map("asset_blobs")
 }
 
+/// Conexão de redes sociais de UM cliente (via Zernio). Guarda o profileId do
+/// Zernio (container das contas do cliente) e um cache das contas conectadas
+/// (accountId + plataforma), para agendar posts sem re-consultar toda hora.
+model SocialConnection {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  clientId       String   @unique @db.Uuid
+  provider       String   @default("zernio")
+  profileId      String?
+  accounts       Json     @default("[]") // [{ accountId, platform, name }]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("social_connections")
+}
+
+/// Agendamento de UMA peça (Deliverable) para postagem: dia/hora, legenda
+/// (gerada por IA ou manual), canal e o estado da publicação no Zernio.
+model ScheduledPost {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  clientId       String?   @db.Uuid
+  strategyId     String    @db.Uuid
+  deliverableId  String    @unique @db.Uuid
+  channel        String
+  caption        String?
+  scheduledFor   DateTime?
+  status         String    @default("draft") // draft | scheduled | published | failed
+  externalId     String?   // id do post no Zernio
+  error          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([organizationId])
+  @@index([strategyId])
+  @@map("scheduled_posts")
+}
+
 /// Fio de comentários de uma peça — comunicação entre CS, Designer e
 /// Audiovisual. Append-only (nunca apagado). Distinto de ReviewComment (que é a
 /// decisão de aprovar/ajustar).

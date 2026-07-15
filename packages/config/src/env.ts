@@ -54,6 +54,11 @@ const EnvSchema = z.object({
   // serverless e suporta arquivos grandes via multipart.
   BLOB_READ_WRITE_TOKEN: z.string().optional(),
 
+  // Zernio — API de publicação/agendamento em redes sociais (Instagram, TikTok,
+  // Facebook, LinkedIn, etc.). Uma chave da agência; cada cliente vira um
+  // "profile" com suas contas conectadas.
+  ZERNIO_API_KEY: z.string().optional(),
+
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
 });

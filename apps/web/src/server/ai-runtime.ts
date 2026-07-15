@@ -269,6 +269,55 @@ async function makeRunner(): Promise<AgentRunner> {
   });
 }
 
+/**
+ * Legenda de postagem a partir do conteúdo aprovado da peça (copy/tema/gancho/
+ * CTA) e do canal. Devolve uma legenda pronta para publicar, com quebras de
+ * linha e hashtags quando fizer sentido.
+ */
+export async function generatePostCaption(
+  input: { channel: string; title: string; brief?: string; copy?: unknown; hook?: string | null; cta?: string | null },
+  opts?: AIRunOpts,
+): Promise<{ caption: string; _demo?: boolean }> {
+  const base = [input.hook, input.title].filter(Boolean).join(" — ");
+  if (!HAS_AI_KEY) {
+    const cta = input.cta ? `\n\n${input.cta}` : "";
+    return { caption: `${base}${cta}`.slice(0, 2000), _demo: true };
+  }
+  const system =
+    "Você escreve legendas de redes sociais em pt-BR. A partir do conteúdo aprovado da peça, escreva UMA legenda pronta para publicar no canal indicado: " +
+    "gancho forte na 1ª linha, corpo curto e escaneável, CTA no fim e 3–8 hashtags relevantes quando o canal pedir (Instagram/TikTok sim; LinkedIn poucas). " +
+    'Sem emojis em excesso. Responda EXCLUSIVAMENTE com JSON {"caption": string}.';
+  const user = [
+    `Canal: ${input.channel}`,
+    `Tema: ${input.title}`,
+    input.hook ? `Gancho: ${input.hook}` : "",
+    input.cta ? `CTA: ${input.cta}` : "",
+    input.brief ? `Briefing: ${input.brief.slice(0, 1500)}` : "",
+    input.copy && typeof input.copy === "object" ? `Copy aprovada: ${JSON.stringify(input.copy).slice(0, 3000)}` : "",
+  ].filter(Boolean).join("\n");
+
+  const startedAt = Date.now();
+  try {
+    const res = await gateway.complete(
+      { messages: [{ role: "system", content: system }, { role: "user", content: user }], maxTokens: 800, responseFormat: "json" },
+      MODEL_POLICY,
+    );
+    if (opts?.organizationId) {
+      await logExecution(opts.organizationId, {
+        provider: res.provider, model: res.model,
+        inputTokens: res.usage.inputTokens, outputTokens: res.usage.outputTokens,
+        latencyMs: Date.now() - startedAt, requestRef: "post-caption",
+      });
+    }
+    const parsed = extractJson(res.text) as { caption?: unknown } | null;
+    const caption = typeof parsed?.caption === "string" && parsed.caption.trim() ? parsed.caption.trim() : res.text.trim();
+    return { caption: caption.slice(0, 2200) };
+  } catch {
+    const cta = input.cta ? `\n\n${input.cta}` : "";
+    return { caption: `${base}${cta}`.slice(0, 2000), _demo: true };
+  }
+}
+
 export interface EditorialAdjustmentSummary {
   understood: string;
   plan: string[];
