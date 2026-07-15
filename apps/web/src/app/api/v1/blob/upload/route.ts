@@ -22,7 +22,7 @@ export const dynamic = "force-dynamic";
  * para vídeo).
  */
 
-const IMAGE_TYPES = ["image/png"];
+const IMAGE_TYPES = ["image/png", "image/jpeg"];
 const VIDEO_TYPES = ["video/quicktime", "video/mp4"];
 
 /** Tipos MIME aceitos conforme o formato da peça. */

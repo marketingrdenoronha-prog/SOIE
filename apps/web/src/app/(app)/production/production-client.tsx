@@ -469,9 +469,9 @@ function uploadSpec(type: string): { accept: string; multiple: boolean; kind: "i
     return { accept: ".mov,.mp4,video/quicktime,video/mp4", multiple: false, kind: "video", label: "Anexar vídeo", hint: "MOV ou MP4 · qualquer tamanho" };
   }
   if (type === "carousel") {
-    return { accept: ".png,image/png", multiple: true, kind: "image", label: "Anexar telas do carrossel", hint: "1 PNG por tela · pode selecionar vários" };
+    return { accept: ".png,.jpg,.jpeg,image/png,image/jpeg", multiple: true, kind: "image", label: "Anexar telas do carrossel", hint: "1 PNG ou JPG por tela · pode selecionar vários" };
   }
-  return { accept: ".png,image/png", multiple: false, kind: "image", label: "Anexar arte", hint: "PNG" };
+  return { accept: ".png,.jpg,.jpeg,image/png,image/jpeg", multiple: false, kind: "image", label: "Anexar arte", hint: "PNG ou JPG" };
 }
 
 /** Painel de produção de UMA peça na coluna do Designer: fazer UPLOAD dos
