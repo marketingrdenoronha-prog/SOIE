@@ -321,7 +321,15 @@ function SidePanel({ line, onClose, onMove, onStart, onReload, busy }: {
             <DesignActions line={line} onMove={onMove} onReload={onReload} busy={busy} />
           )}
           {line.productionStage === "final_review" && (
-            <FinalChecklist line={line} onMove={onMove} busy={busy} />
+            <>
+              <ProducedPiecesLink
+                line={line}
+                onReload={onReload}
+                title="Link de aprovação final (copies + arte)"
+                help="Envie este link externo ao cliente para a aprovação final — ele vê a copy e a arte/vídeo de cada peça e aprova ou pede alteração."
+              />
+              <FinalChecklist line={line} onMove={onMove} busy={busy} />
+            </>
           )}
           {line.productionStage === "approved" && (
             <button onClick={onStart} disabled={busy}
@@ -641,14 +649,14 @@ function AssetList({ assets }: { assets: Asset[] }) {
   );
 }
 
-/** Ações da coluna do Designer no nível da LINHA: gerar/copiar o link público
- * com as peças produzidas para o cliente aprovar, e avançar para Aprovação
- * Final quando a produção terminar. */
-function DesignActions({ line, onMove, onReload, busy }: {
+/** Bloco do LINK EXTERNO das peças produzidas (portal público /producao/:token)
+ * — mostra as copies + as artes/vídeos de cada peça para o cliente aprovar.
+ * Reutilizado na coluna do Designer e na Aprovação Final. */
+function ProducedPiecesLink({ line, onReload, title, help }: {
   line: Line;
-  onMove: (id: string, stage: string, note?: string) => void;
   onReload: () => Promise<void> | void;
-  busy: boolean;
+  title: string;
+  help: string;
 }) {
   const [genBusy, setGenBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -676,12 +684,10 @@ function DesignActions({ line, onMove, onReload, busy }: {
   return (
     <div className="space-y-3 rounded-lg border border-border bg-surface p-3">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold">Link das peças produzidas</p>
+        <p className="text-sm font-semibold">{title}</p>
         <span className="text-[11px] text-muted">{producedCount}/{line.piecesCount} produzidas</span>
       </div>
-      <p className="text-xs text-muted">
-        Anexe as artes/vídeos em cada peça, marque como produzidas e gere o link público para o cliente aprovar.
-      </p>
+      <p className="text-xs text-muted">{help}</p>
 
       {err && <p className="text-xs text-crit">{err}</p>}
 
@@ -707,13 +713,31 @@ function DesignActions({ line, onMove, onReload, busy }: {
           {genBusy ? "Gerando…" : "Gerar link das peças produzidas"}
         </button>
       )}
+    </div>
+  );
+}
 
-      <div className="border-t border-border pt-3">
-        <button onClick={() => onMove(line.id, "final_review")} disabled={busy}
-          className="w-full rounded-md bg-ok px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50">
-          Enviar para Aprovação Final →
-        </button>
-      </div>
+/** Ações da coluna do Designer no nível da LINHA: gerar/copiar o link público
+ * com as peças produzidas para o cliente aprovar, e avançar para Aprovação
+ * Final quando a produção terminar. */
+function DesignActions({ line, onMove, onReload, busy }: {
+  line: Line;
+  onMove: (id: string, stage: string, note?: string) => void;
+  onReload: () => Promise<void> | void;
+  busy: boolean;
+}) {
+  return (
+    <div className="space-y-3">
+      <ProducedPiecesLink
+        line={line}
+        onReload={onReload}
+        title="Link das peças produzidas"
+        help="Anexe as artes/vídeos em cada peça, marque como produzidas e gere o link público (copies + arte) para o cliente aprovar."
+      />
+      <button onClick={() => onMove(line.id, "final_review")} disabled={busy}
+        className="w-full rounded-md bg-ok px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50">
+        Enviar para Aprovação Final →
+      </button>
     </div>
   );
 }
