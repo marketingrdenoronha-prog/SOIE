@@ -82,10 +82,17 @@ export async function createProfile(name: string): Promise<string> {
   return String(id);
 }
 
-/** URL para o cliente autorizar UMA rede (o "conectar um por um"). O operador
- * abre esse link, faz login na rede do cliente e autoriza. */
-export function connectUrl(profileId: string, platform: ZernioPlatform): string {
-  return `${BASE}/connect/${platform}?profileId=${encodeURIComponent(profileId)}`;
+/**
+ * Obtém a URL de AUTORIZAÇÃO real da rede (o "conectar um por um"). O endpoint
+ * /connect/{platform} do Zernio não redireciona: ele responde um JSON com
+ * `authUrl` (a página de login/OAuth da própria rede). É essa authUrl que o
+ * operador abre para logar na conta do cliente e autorizar.
+ */
+export async function getConnectAuthUrl(profileId: string, platform: ZernioPlatform): Promise<string> {
+  const data = await call<any>(`/connect/${platform}?profileId=${encodeURIComponent(profileId)}`);
+  const url = data?.authUrl ?? data?.url ?? data?.redirectUrl;
+  if (!url) throw new ZernioError("Zernio não retornou a URL de autorização (authUrl).");
+  return String(url);
 }
 
 export interface ZernioAccount {

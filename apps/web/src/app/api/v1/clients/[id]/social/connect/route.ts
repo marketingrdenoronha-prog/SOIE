@@ -2,7 +2,7 @@ import { z } from "zod";
 import { prisma } from "@soie/db";
 import { requireAuth } from "@/server/auth";
 import { ok, handle, Errors } from "@/server/http";
-import { hasZernio, createProfile, connectUrl, ZERNIO_PLATFORMS, type ZernioPlatform } from "@/server/zernio";
+import { hasZernio, createProfile, getConnectAuthUrl, ZERNIO_PLATFORMS, type ZernioPlatform } from "@/server/zernio";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,6 +42,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       });
     }
 
-    return ok({ url: connectUrl(conn!.profileId!, platform as ZernioPlatform), profileId: conn!.profileId });
+    const url = await getConnectAuthUrl(conn!.profileId!, platform as ZernioPlatform);
+    return ok({ url, profileId: conn!.profileId });
   });
 }
