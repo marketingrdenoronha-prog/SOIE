@@ -269,6 +269,12 @@ function Card({ line, busy, onOpen, onMove, onStart }: {
             </button>
           </>
         )}
+        {line.productionStage === "to_post" && (
+          <button onClick={onOpen}
+            className="rounded-md bg-brand px-2 py-1 text-[11px] font-semibold text-white hover:bg-brand-strong dark:text-[#00390d]">
+            📅 Agendar postagens
+          </button>
+        )}
         {line.clientId && (
           <Link href={`/clients/${line.clientId}`} className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-elevated">
             Abrir cliente
