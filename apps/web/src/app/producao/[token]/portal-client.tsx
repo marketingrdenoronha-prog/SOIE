@@ -128,13 +128,13 @@ function PieceCard({ p, index, token, authorName, onChanged }: {
       {!decided && (
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
           <button onClick={approve} disabled={busy} className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-strong disabled:opacity-50 dark:text-[#00390d]">
-            {busy ? "…" : "Aprovar peça"}
+            {busy ? "…" : "✓ OK"}
           </button>
           {!asking ? (
-            <button onClick={() => setAsking(true)} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface">Pedir ajuste</button>
+            <button onClick={() => setAsking(true)} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface">✎ Alterar</button>
           ) : (
             <div className="flex w-full items-center gap-2">
-              <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="O que ajustar?" className="flex-1 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm outline-none focus:border-brand" />
+              <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="O que você quer alterar nesta peça?" className="flex-1 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm outline-none focus:border-brand" />
               <button onClick={requestChanges} disabled={busy} className="rounded-md bg-warn px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Enviar</button>
             </div>
           )}

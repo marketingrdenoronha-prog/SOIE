@@ -19,6 +19,7 @@ export const NAV: NavItem[] = [
   { label: "Estoque Editorial", href: "/editorial-stock", group: "Trabalho", icon: "▦" },
   { label: "Produção", href: "/production", group: "Trabalho", icon: "▤" },
   { label: "Aprovações", href: "/approvals", group: "Trabalho", icon: "✓" },
+  { label: "Ajustes", href: "/adjustments", group: "Trabalho", icon: "✎" },
   { label: "Configurações", href: "/settings", group: "Admin", icon: "⚙" },
 ];
 

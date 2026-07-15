@@ -2,10 +2,7 @@ import { prisma } from "@soie/db";
 import { z } from "zod";
 import { requireAuth } from "@/server/auth";
 import { ok, handle, Errors } from "@/server/http";
-import { assembleProjectContext } from "@/server/project-context";
-import { resolveDefaultProjectId } from "@/server/client-scope";
-import { type GenerationContext } from "@/server/editorial-content";
-import { generateEditorialThemes, bucketsToLines } from "@/server/editorial-generation";
+import { generateNextStrategyVersion } from "@/server/editorial-version";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,89 +53,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const { org } = requireAuth(req);
     const { id: clientId } = await params;
     const input = createInput.parse(await req.json().catch(() => ({})));
-    const client = await ensureClient(org, clientId);
-    const projectId = await resolveDefaultProjectId(clientId, org);
+    await ensureClient(org, clientId);
 
-    // As três leituras são independentes — uma onda paralela em vez de três
-    // round-trips sequenciais ao banco (relevante em lambda + Neon).
-    const [project, previous, context] = await Promise.all([
-      prisma.project.findFirst({
-        where: { id: projectId, organizationId: org },
-        include: { brand: true, personas: { include: { pains: true, desires: true } } },
-      }),
-      prisma.editorialStrategy.findFirst({
-        where: { organizationId: org, clientId },
-        orderBy: [{ version: "desc" }, { createdAt: "desc" }],
-        include: { reviewComments: { orderBy: { createdAt: "desc" }, take: 3 } },
-      }),
-      assembleProjectContext(org, projectId),
-    ]);
-    if (!project) throw Errors.notFound("Projeto");
-
-    const nextVersion = (previous?.version ?? 0) + 1;
-    const feedback = previous?.reviewComments
-      ?.filter((c) => c.decision === "request_changes" && c.comment)
-      .map((c) => c.comment)
-      .join("\n");
-
-    // `niche` = o SEGMENTO/MERCADO do cliente (campo `industry`). NUNCA o nome do
-    // cliente: usar o nome aqui fazia a IA tratar o próprio nome como se fosse o
-    // nicho ("empresas de <Nome do Cliente>"), gerando conteúdo fora de contexto.
-    const genCtx: GenerationContext = {
-      brand: project.brand.name,
-      niche: client.industry?.trim() || "seu mercado",
+    // Ponto único de geração de versão (compartilhado com o ajuste da linha):
+    // dobra o feedback do cliente da versão anterior, garante quantidade por
+    // formato e nunca sobrescreve (a anterior vira parentStrategyId).
+    const strategy = await generateNextStrategyVersion(org, clientId, {
+      brief: input.brief,
       objective: input.objective,
       observations: input.observations,
-    };
-
-    // Geração com GARANTIA DE QUANTIDADE: lotes + top-up até bater o solicitado
-    // por formato; a rede de segurança completa o que faltar. Nunca sai parcial.
-    const gen = await generateEditorialThemes({
-      baseInput: {
-        brand: project.brand.name,
-        client: client.name,
-        positioning: project.brand.positioning,
-        objectives: project.brand.objectives,
-        personas: project.personas.map((p) => ({ name: p.name, pains: p.pains.map((x) => x.description) })),
-        version: nextVersion,
-        parentStrategyId: previous?.id,
-        clientFeedback: feedback || undefined,
-        objective: input.objective,
-        observations: input.observations,
-        brief: [input.brief, input.observations, feedback ? `Feedback do cliente na versão anterior:\n${feedback}` : ""]
-          .filter(Boolean)
-          .join("\n\n"),
-      },
-      requested: input.formatCounts,
-      genCtx,
-      context,
-      organizationId: org,
-      now: Date.now(),
-    });
-
-    const { meta } = gen;
-    const strategy = await prisma.editorialStrategy.create({
-      data: {
-        organizationId: org,
-        clientId,
-        projectId,
-        version: nextVersion,
-        parentStrategyId: previous?.id,
-        positioning: meta.positioning,
-        pillars: (meta.pillars as object) ?? [],
-        objectives: (meta.objectives as object) ?? {},
-        // Conteúdo demo (sem chave de IA ou provider caiu) não pode se passar
-        // por estratégia real: marca no rationale e rebaixa a confiança.
-        rationale: meta._demo ? `[MODO DEMO — configure uma chave de IA] ${meta.rationale ?? ""}`.trim() : meta.rationale,
-        confidence: meta._demo ? "low" : ((meta.confidence as "high" | "medium" | "low") ?? "medium"),
-        status: "draft",
-        editorialLines: { create: bucketsToLines(gen.themesByFormat, org) },
-      },
-      include: {
-        editorialLines: { include: { categories: { include: { themes: true } } } },
-        reviewLinks: true,
-        reviewComments: true,
-      },
+      formatCounts: input.formatCounts,
     });
     return ok(strategy, 201);
   });

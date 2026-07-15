@@ -268,3 +268,99 @@ async function makeRunner(): Promise<AgentRunner> {
     resolvePrice: (p, m) => cache.get(`${p}:${m}`) ?? { provider: p as any, model: m, inputPricePer1k: 0.003, outputPricePer1k: 0.015 },
   });
 }
+
+export interface EditorialAdjustmentSummary {
+  understood: string;
+  plan: string[];
+  _demo?: boolean;
+}
+
+/**
+ * Ajuste AUTOMÁTICO da linha editorial (passo 1 de 2): a IA lê o feedback do
+ * cliente + a linha atual e devolve (a) o que ENTENDEU que o cliente pediu e
+ * (b) o que ELA FARIA para reajustar — sem alterar nada ainda. O operador
+ * revisa e só então aciona a reescrita (passo 2 = geração da próxima versão).
+ * Exclusivo da linha editorial; não se aplica a material pronto.
+ */
+export async function summarizeEditorialAdjustment(
+  input: {
+    clientName: string;
+    niche?: string;
+    positioning?: string | null;
+    version: number;
+    feedback: string;
+    themes?: string[];
+  },
+  opts?: AIRunOpts,
+): Promise<EditorialAdjustmentSummary> {
+  if (!HAS_AI_KEY) {
+    return {
+      understood: `Modo demo (sem chave de IA). Feedback recebido do cliente na V${input.version}: ${input.feedback.slice(0, 400)}`,
+      plan: [
+        "Mapear cada ponto citado pelo cliente no feedback",
+        "Ajustar apenas os temas/ganchos afetados, mantendo o que foi aprovado",
+        "Gerar uma nova versão da linha com as mudanças pedidas",
+      ],
+      _demo: true,
+    };
+  }
+
+  const system =
+    "Você é um estrategista de conteúdo. Um cliente pediu AJUSTES na linha editorial atual. " +
+    "Sua tarefa: (1) resumir com precisão o que o cliente pediu e o que você entendeu; " +
+    "(2) listar de forma objetiva o que você faria para reajustar a linha, mudando só o necessário e " +
+    "preservando o que já foi aprovado. Responda EXCLUSIVAMENTE com JSON válido " +
+    '{"understood": string, "plan": string[]} em pt-BR, sem markdown.';
+  const user = [
+    `Cliente: ${input.clientName}`,
+    input.niche ? `Mercado/nicho: ${input.niche}` : "",
+    input.positioning ? `Posicionamento atual: ${input.positioning}` : "",
+    `Versão atual: V${input.version}`,
+    input.themes?.length ? `Temas atuais: ${input.themes.slice(0, 24).join("; ")}` : "",
+    "",
+    `FEEDBACK DO CLIENTE (o que ele pediu para ajustar):\n${input.feedback}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const startedAt = Date.now();
+  try {
+    const res = await gateway.complete(
+      {
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        maxTokens: 1200,
+        responseFormat: "json",
+      },
+      MODEL_POLICY,
+    );
+    if (opts?.organizationId) {
+      await logExecution(opts.organizationId, {
+        provider: res.provider,
+        model: res.model,
+        inputTokens: res.usage.inputTokens,
+        outputTokens: res.usage.outputTokens,
+        latencyMs: Date.now() - startedAt,
+        requestRef: "editorial-adjust-summary",
+      });
+    }
+    const parsed = extractJson(res.text) as { understood?: unknown; plan?: unknown } | null;
+    const plan = Array.isArray(parsed?.plan) ? parsed!.plan.map((x) => String(x)).filter(Boolean) : [];
+    const understood =
+      typeof parsed?.understood === "string" && parsed.understood.trim()
+        ? parsed.understood
+        : res.text.slice(0, 600) || "A IA não retornou um resumo legível — tente novamente ou faça o ajuste manual.";
+    return {
+      understood,
+      plan: plan.length ? plan : ["Reajustar os pontos citados pelo cliente na próxima versão."],
+    };
+  } catch {
+    return {
+      understood: `Não foi possível gerar o resumo agora. Feedback do cliente: ${input.feedback.slice(0, 400)}`,
+      plan: ["Tente novamente em instantes ou faça o ajuste manual."],
+      _demo: true,
+    };
+  }
+}
