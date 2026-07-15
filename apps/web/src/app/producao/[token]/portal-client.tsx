@@ -168,9 +168,53 @@ function PieceCard({ p, index, token, authorName, onChanged }: {
 
 function AssetView({ a }: { a: Asset }) {
   const label = a.name || a.url;
-  if (a.kind === "image") return <a href={a.url} target="_blank" rel="noreferrer"><img src={a.url} alt={label} className="max-h-64 rounded-lg border border-border" /></a>;
-  if (a.kind === "video") return <video src={a.url} controls className="max-h-64 w-full rounded-lg border border-border" />;
+  const [zoom, setZoom] = useState(false);
+
+  if (a.kind === "image") {
+    return (
+      <>
+        <button type="button" onClick={() => setZoom(true)} className="block w-full cursor-zoom-in" title="Clique para ampliar">
+          <img src={a.url} alt={label} className="max-h-64 rounded-lg border border-border transition-opacity hover:opacity-90" />
+        </button>
+        {zoom && <Lightbox src={a.url} alt={label} onClose={() => setZoom(false)} />}
+      </>
+    );
+  }
+  if (a.kind === "video") return <video src={a.url} controls className="max-h-80 w-full rounded-lg border border-border" />;
   return <a href={a.url} target="_blank" rel="noreferrer" className="block truncate rounded-md border border-border bg-surface px-3 py-2 text-sm text-brand-strong hover:bg-elevated dark:text-brand">{label} ↗</a>;
+}
+
+/** Visualização ampliada da arte SEM sair da tela: overlay por cima; fecha ao
+ * clicar fora, no ✕ ou com Esc. */
+function Lightbox({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden"; // não rola o fundo
+    return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm cursor-zoom-out"
+    >
+      <button
+        onClick={onClose}
+        aria-label="Fechar"
+        className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-2xl text-white hover:bg-white/20"
+      >
+        ✕
+      </button>
+      <img
+        src={src}
+        alt={alt}
+        onClick={(e) => e.stopPropagation()}
+        className="max-h-[92vh] max-w-[95vw] rounded-lg object-contain shadow-2xl"
+      />
+    </div>
+  );
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
