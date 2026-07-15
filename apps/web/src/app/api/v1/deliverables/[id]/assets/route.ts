@@ -8,7 +8,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const assetItem = z.object({
-  url: z.string().url().max(2000),
+  // URL absoluta (link externo) OU caminho relativo do arquivo guardado no Neon
+  // (/api/v1/assets/:id/raw). Por isso não usamos z.string().url() (que rejeita
+  // caminho relativo).
+  url: z
+    .string()
+    .max(2000)
+    .refine((v) => /^https?:\/\//.test(v) || v.startsWith("/api/v1/assets/"), "URL inválida"),
   name: z.string().max(300).optional(),
   kind: z.enum(["link", "image", "video", "file"]).optional(),
   note: z.string().max(1000).optional(),

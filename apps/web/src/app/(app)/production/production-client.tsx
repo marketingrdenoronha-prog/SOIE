@@ -2,11 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { upload } from "@vercel/blob/client";
-import { api, getToken } from "@/lib/api";
+import { api, apiUpload } from "@/lib/api";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { ThemeContent } from "@/components/editorial-doc";
 import { AdjustmentsBoard } from "@/components/adjustments-board";
+
+/** Teto do corpo de request no serverless da Vercel (~4,5 MB). Como os arquivos
+ * vão para o banco (Neon) por request normal, cada arquivo fica abaixo disso. */
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -466,17 +469,17 @@ function PieceRow({ p, canProduce, onReload }: { p: Piece; canProduce: boolean; 
 /** Regras de upload por formato da peça: só arquivo (sem link), tipo travado. */
 function uploadSpec(type: string): { accept: string; multiple: boolean; kind: "image" | "video"; label: string; hint: string } {
   if (type === "video_script" || type === "motion_script") {
-    return { accept: ".mov,.mp4,video/quicktime,video/mp4", multiple: false, kind: "video", label: "Anexar vídeo", hint: "MOV ou MP4 · qualquer tamanho" };
+    return { accept: ".mov,.mp4,video/quicktime,video/mp4", multiple: false, kind: "video", label: "Anexar vídeo", hint: "MOV ou MP4 · até 4 MB" };
   }
   if (type === "carousel") {
-    return { accept: ".png,.jpg,.jpeg,image/png,image/jpeg", multiple: true, kind: "image", label: "Anexar telas do carrossel", hint: "1 PNG ou JPG por tela · pode selecionar vários" };
+    return { accept: ".png,.jpg,.jpeg,image/png,image/jpeg", multiple: true, kind: "image", label: "Anexar telas do carrossel", hint: "1 PNG ou JPG por tela · pode selecionar vários · até 4 MB cada" };
   }
-  return { accept: ".png,.jpg,.jpeg,image/png,image/jpeg", multiple: false, kind: "image", label: "Anexar arte", hint: "PNG ou JPG" };
+  return { accept: ".png,.jpg,.jpeg,image/png,image/jpeg", multiple: false, kind: "image", label: "Anexar arte", hint: "PNG ou JPG · até 4 MB" };
 }
 
 /** Painel de produção de UMA peça na coluna do Designer: fazer UPLOAD dos
- * arquivos finais (arte PNG, telas de carrossel, vídeo MOV/MP4) direto para o
- * Vercel Blob + mover a peça no fluxo (produção → aprovação interna). */
+ * arquivos finais (arte PNG/JPG, telas de carrossel, vídeo MOV/MP4) para o
+ * banco (Neon) + mover a peça no fluxo (produção → aprovação interna). */
 function PieceProduction({ d, onReload }: {
   d: NonNullable<Piece["deliverable"]>;
   onReload: () => Promise<void> | void;
@@ -490,50 +493,29 @@ function PieceProduction({ d, onReload }: {
   async function onFiles(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
     const selected = Array.from(fileList);
+    // Limite do serverless: arquivos vão para o banco (Neon) via request normal.
+    const tooBig = selected.find((f) => f.size > MAX_UPLOAD_BYTES);
+    if (tooBig) {
+      setErr(`"${tooBig.name}" tem ${(tooBig.size / 1024 / 1024).toFixed(1)} MB. Máximo ${(MAX_UPLOAD_BYTES / 1024 / 1024).toFixed(0)} MB por arquivo (os arquivos são guardados no banco Neon).`);
+      return;
+    }
     setBusy(true); setErr(null);
     try {
-      // Preflight: se o Vercel Blob não estiver configurado neste deployment, dá
-      // um erro claro (com os nomes das variáveis encontradas) em vez do
-      // genérico "Failed to retrieve the client token".
-      const status = await api<{ configured: boolean; candidates?: string[] }>("/blob/upload").catch(() => ({ configured: true, candidates: [] as string[] }));
-      if (!status.configured) {
-        const found = status.candidates?.length ? ` Variáveis encontradas: ${status.candidates.join(", ")}.` : " Nenhuma variável de Blob encontrada.";
-        setErr(`Token do Vercel Blob não encontrado neste ambiente.${found} Confirme que existe uma variável cujo valor é o token (começa com "vercel_blob_rw_") e faça Redeploy.`);
-        return;
-      }
       const uploaded: Array<{ url: string; name: string; kind: string }> = [];
       for (let i = 0; i < selected.length; i++) {
         const file = selected[i]!;
-        setProgress(selected.length > 1 ? `Enviando ${i + 1}/${selected.length}: ${file.name}` : `Enviando ${file.name}…`);
-        const blob = await upload(`producao/${d.id}/${file.name}`, file, {
-          access: "public",
-          handleUploadUrl: "/api/v1/blob/upload",
-          multipart: spec.kind === "video",
-          contentType: file.type || undefined,
-          clientPayload: JSON.stringify({ deliverableId: d.id }),
-          headers: { authorization: `Bearer ${getToken() ?? ""}` },
-          onUploadProgress: ({ percentage }) => {
-            setProgress(
-              selected.length > 1
-                ? `Enviando ${i + 1}/${selected.length}: ${file.name} (${Math.round(percentage)}%)`
-                : `Enviando ${file.name}… ${Math.round(percentage)}%`,
-            );
-          },
-        });
-        uploaded.push({ url: blob.url, name: file.name, kind: spec.kind });
+        setProgress(selected.length > 1 ? `Enviando ${i + 1}/${selected.length}: ${file.name}…` : `Enviando ${file.name}…`);
+        // Upload direto para o Neon (multipart → asset_blobs). Retorna a URL de
+        // download da peça.
+        const res = await apiUpload<{ url: string; name: string; kind: string }>(`/deliverables/${d.id}/upload`, file);
+        uploaded.push({ url: res.url, name: res.name, kind: res.kind });
       }
       setProgress("Salvando…");
       await api(`/deliverables/${d.id}/assets`, { method: "POST", body: JSON.stringify({ files: uploaded }) });
       if (fileRef.current) fileRef.current.value = "";
       await onReload();
     } catch (e) {
-      const base = e instanceof Error ? e.message : "Erro ao enviar arquivo";
-      // Anexa o diagnóstico (nome da variável usada) para pinpoint do problema.
-      const diag = await api<{ configured: boolean; source: string | null; candidates?: string[] }>("/blob/upload").catch(() => null);
-      const extra = diag
-        ? ` [diagnóstico: token ${diag.configured ? `encontrado em ${diag.source}` : "NÃO encontrado"}${diag.candidates?.length ? ` · vars: ${diag.candidates.join(", ")}` : ""}]`
-        : "";
-      setErr(base + extra);
+      setErr(e instanceof Error ? e.message : "Erro ao enviar arquivo");
     } finally {
       setBusy(false); setProgress(null);
     }

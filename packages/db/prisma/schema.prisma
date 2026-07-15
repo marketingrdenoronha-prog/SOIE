@@ -1030,6 +1030,23 @@ model DeliverableAsset {
   @@map("deliverable_assets")
 }
 
+/// Arquivo binário guardado NO PRÓPRIO BANCO (Neon), sem depender de storage
+/// externo (Vercel Blob). Tabela separada de DeliverableAsset de propósito: os
+/// bytes (`data`) nunca entram nas listagens de assets — só são lidos pela rota
+/// de download `/api/v1/assets/:id/raw`. O DeliverableAsset aponta para essa
+/// rota via `url`.
+model AssetBlob {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  mimeType       String
+  sizeBytes      Int
+  data           Bytes
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@map("asset_blobs")
+}
+
 /// Fio de comentários de uma peça — comunicação entre CS, Designer e
 /// Audiovisual. Append-only (nunca apagado). Distinto de ReviewComment (que é a
 /// decisão de aprovar/ajustar).
