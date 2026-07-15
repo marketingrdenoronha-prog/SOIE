@@ -841,6 +841,19 @@ function ScheduleModal({ line, onClose }: { line: Line; onClose: () => void }) {
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [captionBusy, setCaptionBusy] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<Array<{ accountId: string; platform: string; name: string | null }>>([]);
+  const [socialConfigured, setSocialConfigured] = useState(false);
+  const [socialDebug, setSocialDebug] = useState<unknown>(null);
+
+  async function refreshSocial() {
+    if (!line.clientId) return;
+    try {
+      const s = await api<{ configured: boolean; accounts: any[]; debug: unknown }>(`/clients/${line.clientId}/social`);
+      setAccounts(s.accounts ?? []);
+      setSocialConfigured(s.configured);
+      setSocialDebug(s.accounts?.length ? null : s.debug ?? null);
+    } catch { /* mantém estado anterior */ }
+  }
 
   async function load() {
     setErr(null);
@@ -856,9 +869,11 @@ function ScheduleModal({ line, onClose }: { line: Line; onClose: () => void }) {
         };
       }
       setRows(r);
+      setSocialConfigured(d.social.configured);
+      if (d.social.accounts?.length) setAccounts(d.social.accounts);
     } catch (e) { setErr(e instanceof Error ? e.message : "Erro"); }
   }
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { load(); refreshSocial(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   function setRow(id: string, patch: Partial<Row>) {
     setRows((prev) => ({ ...prev, [id]: { ...prev[id]!, ...patch } }));
@@ -916,8 +931,6 @@ function ScheduleModal({ line, onClose }: { line: Line; onClose: () => void }) {
     finally { setBusy(null); }
   }
 
-  const accounts = data?.social.accounts ?? [];
-
   return (
     <div className="fixed inset-0 z-[60] flex justify-center overflow-y-auto bg-black/50 p-4" onClick={onClose}>
       <div className="my-4 h-max w-full max-w-3xl rounded-xl border border-border bg-elevated shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -937,9 +950,9 @@ function ScheduleModal({ line, onClose }: { line: Line; onClose: () => void }) {
           <section className="rounded-lg border border-border bg-surface p-3">
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold">Redes do cliente</p>
-              <button onClick={load} className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-elevated">Atualizar contas</button>
+              <button onClick={() => { setMsg(null); refreshSocial(); }} className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-elevated">Atualizar contas</button>
             </div>
-            {data && !data.social.configured ? (
+            {data && !socialConfigured ? (
               <p className="mt-2 text-xs text-warn">
                 Publicação automática não configurada. Defina a chave <code>ZERNIO_API_KEY</code> nas variáveis do projeto (veja o tutorial em docs/TUTORIAL-AGENDAMENTO.md). Você ainda pode salvar o plano de agendamento abaixo.
               </p>
@@ -962,6 +975,12 @@ function ScheduleModal({ line, onClose }: { line: Line; onClose: () => void }) {
                     </button>
                   ))}
                 </div>
+                {accounts.length === 0 && socialDebug != null && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-[11px] text-muted hover:text-foreground">Diagnóstico (o que o Zernio retornou)</summary>
+                    <pre className="mt-1 max-h-40 overflow-auto rounded-md border border-border bg-elevated p-2 text-[10px] text-muted">{JSON.stringify(socialDebug, null, 2)}</pre>
+                  </details>
+                )}
               </>
             )}
           </section>
@@ -1030,8 +1049,8 @@ function ScheduleModal({ line, onClose }: { line: Line; onClose: () => void }) {
             className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-surface disabled:opacity-50">
             {busy === "save" ? "Salvando…" : "Salvar plano"}
           </button>
-          <button onClick={onPublish} disabled={busy !== null || !data?.social.connected}
-            title={!data?.social.connected ? "Conecte as redes do cliente para agendar" : ""}
+          <button onClick={onPublish} disabled={busy !== null || accounts.length === 0}
+            title={accounts.length === 0 ? "Conecte as redes do cliente para agendar" : ""}
             className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-strong disabled:opacity-50 dark:text-[#00390d]">
             {busy === "publish" ? "Agendando…" : "Agendar no Zernio →"}
           </button>

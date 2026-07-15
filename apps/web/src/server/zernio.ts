@@ -101,15 +101,40 @@ export interface ZernioAccount {
   name: string | null;
 }
 
-/** Lista as contas conectadas de um profile. */
-export async function listAccounts(profileId: string): Promise<ZernioAccount[]> {
-  const data = await call<any>(`/accounts?profileId=${encodeURIComponent(profileId)}`);
-  const arr: any[] = Array.isArray(data) ? data : (data?.accounts ?? data?.data ?? []);
-  return arr.map((a) => ({
-    accountId: String(a._id ?? a.id ?? a.accountId ?? ""),
-    platform: String(a.platform ?? a.provider ?? ""),
-    name: a.name ?? a.username ?? a.displayName ?? null,
+function accProfileId(a: any): string | null {
+  const p = a?.profileId ?? a?.profile ?? a?.profile_id ?? a?.group ?? null;
+  if (!p) return null;
+  return String(typeof p === "object" ? (p._id ?? p.id ?? "") : p);
+}
+
+/** Extrai o array de contas de qualquer formato de resposta comum. */
+function extractAccounts(data: any): any[] {
+  if (Array.isArray(data)) return data;
+  return data?.accounts ?? data?.data ?? data?.results ?? data?.items ?? data?.profile?.accounts ?? [];
+}
+
+/** Lista as contas conectadas de um profile (tolerante a formatos). Também
+ * devolve `raw` para diagnóstico quando nada é encontrado. */
+export async function listAccountsDetailed(profileId: string): Promise<{ accounts: ZernioAccount[]; raw: unknown }> {
+  // Tenta com filtro; se vier vazio, tenta sem filtro e filtra pelo profileId.
+  let data = await call<any>(`/accounts?profileId=${encodeURIComponent(profileId)}`).catch(() => null);
+  let arr = extractAccounts(data);
+  if (arr.length === 0) {
+    const all = await call<any>("/accounts").catch(() => null);
+    const allArr = extractAccounts(all);
+    if (allArr.length) { data = all; arr = allArr.filter((a) => { const p = accProfileId(a); return !p || p === profileId; }); }
+    else if (all) data = all;
+  }
+  const accounts = arr.map((a) => ({
+    accountId: String(a._id ?? a.id ?? a.accountId ?? a.accountID ?? ""),
+    platform: String(a.platform ?? a.provider ?? a.network ?? a.type ?? ""),
+    name: a.name ?? a.username ?? a.displayName ?? a.handle ?? a.label ?? null,
   })).filter((a) => a.accountId);
+  return { accounts, raw: data };
+}
+
+export async function listAccounts(profileId: string): Promise<ZernioAccount[]> {
+  return (await listAccountsDetailed(profileId)).accounts;
 }
 
 export interface SchedulePostInput {

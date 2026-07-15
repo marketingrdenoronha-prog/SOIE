@@ -1,7 +1,7 @@
 import { prisma } from "@soie/db";
 import { requireAuth } from "@/server/auth";
 import { ok, handle, Errors } from "@/server/http";
-import { hasZernio, listAccounts, ZERNIO_PLATFORMS } from "@/server/zernio";
+import { hasZernio, listAccountsDetailed, ZERNIO_PLATFORMS } from "@/server/zernio";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,12 +18,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     // Se tem profile e Zernio configurado, atualiza o cache das contas.
     let accounts = (conn?.accounts as any[]) ?? [];
+    let debug: unknown = null;
     if (conn?.profileId && hasZernio()) {
       try {
-        accounts = await listAccounts(conn.profileId);
+        const detailed = await listAccountsDetailed(conn.profileId);
+        accounts = detailed.accounts;
+        if (accounts.length === 0) debug = detailed.raw; // diagnóstico p/ calibrar
         await prisma.socialConnection.update({ where: { clientId: id }, data: { accounts } });
-      } catch {
-        /* mantém o cache anterior se a chamada falhar */
+      } catch (e) {
+        debug = { error: e instanceof Error ? e.message : String(e) };
       }
     }
 
@@ -32,6 +35,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       platforms: ZERNIO_PLATFORMS,
       profileId: conn?.profileId ?? null,
       accounts,
+      debug,
     });
   });
 }
