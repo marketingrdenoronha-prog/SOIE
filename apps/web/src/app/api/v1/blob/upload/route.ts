@@ -42,13 +42,18 @@ function blobToken(): string | undefined {
 }
 
 /** GET /api/v1/blob/upload — diagnóstico: diz se o Vercel Blob está configurado
- * neste deployment (sem vazar o valor do token). Útil para saber, na hora do
- * erro, se falta o BLOB_READ_WRITE_TOKEN no ambiente que você está testando. */
+ * neste deployment (sem vazar o valor do token) e lista os NOMES das variáveis
+ * de ambiente relacionadas a Blob/token (apenas nomes — nunca valores), para
+ * identificar como o store nomeou o token. */
 export async function GET(req: Request) {
   return handle(async () => {
     requireAuth(req);
     const { token, source } = resolveBlobToken();
-    return ok({ configured: Boolean(token), source: source ?? null });
+    // Só NOMES (seguros); nunca valores. Ajuda a ver o nome real do token.
+    const candidates = Object.keys(process.env)
+      .filter((k) => /BLOB|READ_WRITE|_TOKEN$|STORAGE/i.test(k))
+      .sort();
+    return ok({ configured: Boolean(token), source: source ?? null, candidates });
   });
 }
 

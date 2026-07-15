@@ -493,10 +493,12 @@ function PieceProduction({ d, onReload }: {
     setBusy(true); setErr(null);
     try {
       // Preflight: se o Vercel Blob não estiver configurado neste deployment, dá
-      // um erro claro em vez do genérico "Failed to retrieve the client token".
-      const status = await api<{ configured: boolean }>("/blob/upload").catch(() => ({ configured: true }));
+      // um erro claro (com os nomes das variáveis encontradas) em vez do
+      // genérico "Failed to retrieve the client token".
+      const status = await api<{ configured: boolean; candidates?: string[] }>("/blob/upload").catch(() => ({ configured: true, candidates: [] as string[] }));
       if (!status.configured) {
-        setErr("Vercel Blob não está configurado neste ambiente. No painel da Vercel: projeto soie-web → Storage → Blob → Connect Project (Production + Preview) e faça um Redeploy.");
+        const found = status.candidates?.length ? ` Variáveis encontradas: ${status.candidates.join(", ")}.` : " Nenhuma variável de Blob encontrada.";
+        setErr(`Token do Vercel Blob não encontrado neste ambiente.${found} Confirme que existe uma variável cujo valor é o token (começa com "vercel_blob_rw_") e faça Redeploy.`);
         return;
       }
       const uploaded: Array<{ url: string; name: string; kind: string }> = [];
@@ -525,7 +527,13 @@ function PieceProduction({ d, onReload }: {
       if (fileRef.current) fileRef.current.value = "";
       await onReload();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Erro ao enviar arquivo");
+      const base = e instanceof Error ? e.message : "Erro ao enviar arquivo";
+      // Anexa o diagnóstico (nome da variável usada) para pinpoint do problema.
+      const diag = await api<{ configured: boolean; source: string | null; candidates?: string[] }>("/blob/upload").catch(() => null);
+      const extra = diag
+        ? ` [diagnóstico: token ${diag.configured ? `encontrado em ${diag.source}` : "NÃO encontrado"}${diag.candidates?.length ? ` · vars: ${diag.candidates.join(", ")}` : ""}]`
+        : "";
+      setErr(base + extra);
     } finally {
       setBusy(false); setProgress(null);
     }
