@@ -9,11 +9,36 @@ import { ok, handle } from "@/server/http";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Fonte da verdade do token do Blob: process.env é o que o próprio SDK lê e
- * o que a Vercel injeta ao conectar o store — evita qualquer divergência com o
- * parse do @soie/config. */
+/**
+ * Localiza o token de leitura/escrita do Vercel Blob de forma tolerante.
+ *
+ * O SDK só procura `BLOB_READ_WRITE_TOKEN`, mas quando o store é criado com um
+ * PREFIXO custom de variáveis (ex.: o prefixo virou "BLOB_READ_WRITE_TOKEN"),
+ * a Vercel gera nomes como `<PREFIXO>_READ_WRITE_TOKEN`, `<PREFIXO>_STORE_ID`,
+ * etc. — e o nome exato `BLOB_READ_WRITE_TOKEN` não existe. Aqui resolvemos:
+ *   1. nome padrão;
+ *   2. qualquer env cujo NOME termina em READ_WRITE_TOKEN (o valor é o token);
+ *   3. qualquer env cujo VALOR pareça um token de Blob (vercel_blob_rw_...).
+ */
+function resolveBlobToken(): { token?: string; source?: string } {
+  if (process.env.BLOB_READ_WRITE_TOKEN) return { token: process.env.BLOB_READ_WRITE_TOKEN, source: "BLOB_READ_WRITE_TOKEN" };
+  if (env.BLOB_READ_WRITE_TOKEN) return { token: env.BLOB_READ_WRITE_TOKEN, source: "BLOB_READ_WRITE_TOKEN (config)" };
+
+  const entries = Object.entries(process.env).filter(
+    (e): e is [string, string] => typeof e[1] === "string" && e[1].length > 0,
+  );
+  // Nome termina em READ_WRITE_TOKEN (cobre <PREFIXO>_READ_WRITE_TOKEN).
+  const byName = entries.filter(([k]) => /READ_WRITE_TOKEN$/.test(k));
+  const rw = byName.find(([, v]) => v.startsWith("vercel_blob_rw_")) ?? byName[0];
+  if (rw) return { token: rw[1], source: rw[0] };
+  // Último recurso: valor que parece um token de Blob.
+  const byValue = entries.find(([, v]) => v.startsWith("vercel_blob_rw_"));
+  if (byValue) return { token: byValue[1], source: byValue[0] };
+  return {};
+}
+
 function blobToken(): string | undefined {
-  return process.env.BLOB_READ_WRITE_TOKEN || env.BLOB_READ_WRITE_TOKEN || undefined;
+  return resolveBlobToken().token;
 }
 
 /** GET /api/v1/blob/upload — diagnóstico: diz se o Vercel Blob está configurado
@@ -22,7 +47,8 @@ function blobToken(): string | undefined {
 export async function GET(req: Request) {
   return handle(async () => {
     requireAuth(req);
-    return ok({ configured: Boolean(blobToken()) });
+    const { token, source } = resolveBlobToken();
+    return ok({ configured: Boolean(token), source: source ?? null });
   });
 }
 
