@@ -22,7 +22,9 @@ const input = z.object({
 /** Transições permitidas por ação (status atual → novo). */
 const TRANSITIONS: Record<string, { from: string[]; to: PieceStatus }> = {
   start: { from: ["aguardando", "em_producao"], to: "em_producao" },
-  produced: { from: ["em_producao"], to: "produzida" },
+  // Pode marcar produzida direto de "Aguardando" (anexou a arte e concluiu num
+  // passo só) ou de "Em Produção".
+  produced: { from: ["aguardando", "em_producao"], to: "produzida" },
   approve_internal: { from: ["produzida"], to: "aprovada_interna" },
   reject_internal: { from: ["produzida", "aprovada_interna"], to: "em_producao" },
   reopen: { from: ["produzida", "aprovada_interna"], to: "em_producao" },
