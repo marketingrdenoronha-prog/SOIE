@@ -21,6 +21,9 @@ if (process.env.DATABASE_URL) {
   run("pnpm", ["--filter", "@soie/db", "seed"]);
   // V2 Fase 1: garante Brand+Project default para clientes legado. Idempotente.
   run("pnpm", ["--filter", "@soie/db", "seed:v2"]);
+  // One-shot: aplica a senha do marco@beam360.com.br neste deploy. Será
+  // removido em seguida para não sobrescrever a senha a cada build.
+  run("pnpm", ["--filter", "@soie/db", "seed:reset"]);
 } else {
   console.log("► DATABASE_URL not set — skipping migrate/seed (site builds anyway)");
 }
