@@ -101,31 +101,50 @@ function scriptCopy(i: number, ctx: GenerationContext, isMotion: boolean): Struc
   };
 }
 
-/** Carrossel: slide 1 headline forte, desenvolvimento no miolo, conclusão + CTA. */
+/** Headline curta (≤10 palavras) para arte — sem jogar o nicho cru na peça. */
+const SHORT_HEADLINES = [
+  "O erro que trava seu resultado",
+  "O que ninguém te conta antes",
+  "Bastidores: resultado de verdade",
+  "3 sinais de que precisa mudar",
+  "Antes e depois de um cliente real",
+  "A verdade que o mercado evita",
+  "Comece sem risco",
+  "O passo a passo que aplicamos",
+];
+function shortHeadline(i: number): string {
+  return SHORT_HEADLINES[i % SHORT_HEADLINES.length]!;
+}
+/** CTA curto (poucas palavras) para arte. */
+const SHORT_CTAS = ["Comente “EU QUERO”.", "Salve e compartilhe.", "Chame no direct.", "Toque no link da bio.", "Marque a gente nos stories."];
+function shortCta(i: number): string {
+  return SHORT_CTAS[i % SHORT_CTAS.length]!;
+}
+
+/** Carrossel: texto CURTO por slide (≤10 palavras) para casar com a arte. */
 function carouselCopy(i: number, ctx: GenerationContext): StructuredCopy {
-  const { title } = angle(i, ctx);
   const slides = [
-    { title: "Headline", text: `${title}` },
-    { title: "Slide 2", text: `A maioria das empresas de ${ctx.niche} acredita que basta aparecer mais. Não é bem assim — sem estrutura, mais volume só amplifica o erro.` },
-    { title: "Slide 3", text: `O primeiro pilar é clareza: o cliente precisa entender em segundos o que você resolve e por que confiar em você.` },
-    { title: "Slide 4", text: `O segundo é prova: cases, bastidores e resultados reais valem mais que qualquer promessa bonita.` },
-    { title: "Slide 5", text: `O terceiro é consistência: aparecer com método, na frequência certa, com uma mensagem que evolui — não que se repete.` },
-    { title: "Conclusão + CTA", text: `Junte clareza, prova e consistência e o resultado deixa de ser sorte. A ${ctx.brand} constrói isso com você. ${ctaFor(i, ctx)}` },
+    { title: "Capa", text: shortHeadline(i) },
+    { title: "Slide 2", text: "Aparecer mais não é ter estrutura." },
+    { title: "Slide 3", text: "Clareza: entendem você em segundos." },
+    { title: "Slide 4", text: "Prova: cases valem mais que promessa." },
+    { title: "Slide 5", text: "Consistência: método, não sorte." },
+    { title: "CTA", text: shortCta(i) },
   ];
   return { format: "carrossel", slides };
 }
 
-/** Estático: headline, subheadline, corpo desenvolvido, CTA e observações de design. */
+/** Estático: textos CURTOS (≤10 palavras) para casar com a arte. Profundidade
+ * fica em designNotes (instrução de arte, não vai na peça). */
 function staticCopy(i: number, ctx: GenerationContext): StructuredCopy {
-  const { title } = angle(i, ctx);
   return {
     format: "estatico",
     static: {
-      headline: title,
-      subheadline: `O que separa quem cresce de quem estagna em ${ctx.niche}.`,
-      body: `Não é o talento, nem a sorte: é a estrutura. Empresas que comunicam resultado com clareza e prova constroem autoridade e vendem com mais previsibilidade. A ${ctx.brand} organiza estratégia, conteúdo e prova para que a sua marca seja a escolha óbvia — sem depender de improviso.`,
-      cta: ctaFor(i, ctx),
-      designNotes: "Alto contraste, headline em destaque no topo, corpo com respiro, logo e CTA no rodapé. Priorizar 1 ideia visual forte.",
+      headline: shortHeadline(i),
+      subheadline: "Estrutura vira resultado previsível.",
+      body: "Clareza, prova e consistência — sem improviso.",
+      cta: shortCta(i),
+      designNotes: `Alto contraste, headline em destaque no topo, muito respiro, logo e CTA no rodapé. 1 ideia visual forte. Marca: ${ctx.brand}.`,
     },
   };
 }
@@ -196,10 +215,16 @@ export function validateThemeReady(t: GeneratedTheme): string[] {
   if (!t.cta) issues.push("sem CTA");
   if (!t.productionNotes) issues.push("sem observações de produção");
   const key = toFormatKey(t.format);
+  const wc = (s: string) => (s ? s.trim().split(/\s+/).filter(Boolean).length : 0);
   if (key === "carrossel") {
+    // Arte: texto CURTO por slide (≤10 palavras). Valida presença + teto.
     if (!t.copy.slides || t.copy.slides.length < 3) issues.push("carrossel raso (< 3 slides)");
+    if ((t.copy.slides ?? []).some((s) => wc(str(s?.text)) > 12)) issues.push("carrossel com texto longo (>10 palavras/slide)");
   } else if (key === "estatico") {
-    if (!t.copy.static?.body || t.copy.static.body.length < 120) issues.push("estático raso (corpo curto)");
+    // Arte: textos CURTOS (≤10 palavras). Só exige headline + body presentes.
+    if (!t.copy.static?.headline) issues.push("estático sem headline");
+    if (!t.copy.static?.body) issues.push("estático sem texto");
+    if (wc(str(t.copy.static?.body)) > 12) issues.push("estático com texto longo (>10 palavras)");
   } else {
     const words = (t.copy.sections ?? []).map((s) => s.text).join(" ").split(/\s+/).filter(Boolean).length;
     if ((t.copy.sections ?? []).length < 5) issues.push("roteiro sem as 5 partes");
