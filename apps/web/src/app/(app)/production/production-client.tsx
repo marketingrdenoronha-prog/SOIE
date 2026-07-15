@@ -6,6 +6,7 @@ import { upload } from "@vercel/blob/client";
 import { api, getToken } from "@/lib/api";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { ThemeContent } from "@/components/editorial-doc";
+import { AdjustmentsBoard } from "@/components/adjustments-board";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -184,6 +185,20 @@ export function ProductionClient() {
           })}
         </div>
       )}
+
+      {/* Colunas de ALTERAÇÃO dentro da esteira: o que o cliente pediu para
+          mudar, separado em Linha Editorial (ajuste manual/IA) e Materiais
+          (o Designer refaz). */}
+      <section className="space-y-3 border-t border-border pt-6">
+        <div>
+          <h2 className="text-lg font-semibold">Alterações solicitadas pelo cliente</h2>
+          <p className="text-sm text-muted">
+            Pedidos de mudança separados por tipo — a linha editorial tem ajuste manual e automático (IA); o material
+            pronto volta para o Designer refazer.
+          </p>
+        </div>
+        <AdjustmentsBoard />
+      </section>
 
       {open && (
         <SidePanel line={open} onClose={() => setOpenId(null)} onMove={move} onStart={() => startProduction(open.id)} onReload={load} busy={busy === open.id} />
