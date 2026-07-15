@@ -31,7 +31,14 @@ export async function GET(req: Request) {
               include: {
                 themes: {
                   orderBy: { priority: "asc" },
-                  include: { deliverable: { include: { reviewLinks: { orderBy: { createdAt: "desc" }, take: 1 } } } },
+                  include: {
+                    deliverable: {
+                      include: {
+                        reviewLinks: { orderBy: { createdAt: "desc" }, take: 1 },
+                        assets: { orderBy: { version: "desc" } },
+                      },
+                    },
+                  },
                 },
               },
             },
@@ -70,8 +77,18 @@ export async function GET(req: Request) {
                   type: t.deliverable.type,
                   channel: t.deliverable.channel,
                   status: t.deliverable.status,
+                  productionStatus: t.deliverable.productionStatus,
                   brief: t.deliverable.brief,
                   spec: t.deliverable.spec,
+                  assets: t.deliverable.assets.map((a) => ({
+                    id: a.id,
+                    version: a.version,
+                    kind: a.kind,
+                    url: a.url,
+                    name: a.name,
+                    note: a.note,
+                    createdAt: a.createdAt,
+                  })),
                 }
               : null,
           })),
@@ -94,6 +111,7 @@ export async function GET(req: Request) {
         approvedAt: s.approvedAt,
         createdAt: s.createdAt,
         token: s.reviewLinks[0]?.token ?? null,
+        productionPortalToken: s.productionPortalToken ?? null,
         stageHistory: (s.stageHistory as any) ?? [],
         reviewComments: s.reviewComments.map((c) => ({
           decision: c.decision,

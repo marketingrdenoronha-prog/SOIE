@@ -8,6 +8,15 @@ import { ThemeContent } from "@/components/editorial-doc";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+interface Asset {
+  id: string;
+  version: number;
+  kind: string;
+  url: string;
+  name: string | null;
+  note: string | null;
+  createdAt: string;
+}
 interface Piece {
   id: string;
   title: string;
@@ -25,8 +34,10 @@ interface Piece {
     type: string;
     channel: string;
     status: string;
+    productionStatus: string;
     brief: string | null;
     spec: unknown;
+    assets: Asset[];
   } | null;
 }
 interface HistoryEvent {
@@ -57,6 +68,7 @@ interface Line {
   approvedAt: string | null;
   createdAt: string;
   token: string | null;
+  productionPortalToken: string | null;
   stageHistory: HistoryEvent[];
   reviewComments: Comment[];
   piecesCount: number;
@@ -173,7 +185,7 @@ export function ProductionClient() {
       )}
 
       {open && (
-        <SidePanel line={open} onClose={() => setOpenId(null)} onMove={move} onStart={() => startProduction(open.id)} busy={busy === open.id} />
+        <SidePanel line={open} onClose={() => setOpenId(null)} onMove={move} onStart={() => startProduction(open.id)} onReload={load} busy={busy === open.id} />
       )}
     </div>
   );
@@ -221,9 +233,9 @@ function Card({ line, busy, onOpen, onMove, onStart }: {
           </button>
         )}
         {line.productionStage === "design" && (
-          <button onClick={() => onMove(line.id, "final_review")} disabled={busy}
-            className="rounded-md bg-brand px-2 py-1 text-[11px] font-semibold text-white hover:bg-brand-strong disabled:opacity-50 dark:text-[#00390d]">
-            Enviar p/ Aprovação Final →
+          <button onClick={onOpen}
+            className="rounded-md bg-brand px-2 py-1 text-[11px] font-semibold text-white hover:bg-brand-strong dark:text-[#00390d]">
+            Anexar peças / gerar link
           </button>
         )}
         {line.productionStage === "final_review" && (
@@ -248,14 +260,17 @@ function Card({ line, busy, onOpen, onMove, onStart }: {
   );
 }
 
-function SidePanel({ line, onClose, onMove, onStart, busy }: {
+function SidePanel({ line, onClose, onMove, onStart, onReload, busy }: {
   line: Line;
   onClose: () => void;
   onMove: (id: string, stage: string, note?: string) => void;
   onStart: () => void;
+  onReload: () => Promise<void> | void;
   busy: boolean;
 }) {
-  const [tab, setTab] = useState<"info" | "history" | "pieces">("info");
+  const [tab, setTab] = useState<"info" | "history" | "pieces">(
+    line.productionStage === "design" ? "pieces" : "info",
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onClose}>
@@ -281,8 +296,11 @@ function SidePanel({ line, onClose, onMove, onStart, busy }: {
         <div className="space-y-5 p-5">
           {tab === "info" && <InfoTab line={line} />}
           {tab === "history" && <HistoryTab line={line} />}
-          {tab === "pieces" && <PiecesTab line={line} />}
+          {tab === "pieces" && <PiecesTab line={line} onReload={onReload} />}
 
+          {line.productionStage === "design" && (
+            <DesignActions line={line} onMove={onMove} onReload={onReload} busy={busy} />
+          )}
           {line.productionStage === "final_review" && (
             <FinalChecklist line={line} onMove={onMove} busy={busy} />
           )}
@@ -370,17 +388,35 @@ function HistoryTab({ line }: { line: Line }) {
   );
 }
 
-function PiecesTab({ line }: { line: Line }) {
+function PiecesTab({ line, onReload }: { line: Line; onReload: () => Promise<void> | void }) {
   if (line.pieces.length === 0) return <p className="text-sm text-muted">Nenhuma peça nesta linha editorial.</p>;
+  // Designer trabalha as peças (anexar artes/vídeos + aprovação) enquanto a
+  // linha está na coluna "Designer / Audiovisual".
+  const canProduce = line.productionStage === "design";
   return (
     <div className="space-y-2">
-      {line.pieces.map((p) => <PieceRow key={p.id} p={p} />)}
+      {line.pieces.map((p) => <PieceRow key={p.id} p={p} canProduce={canProduce} onReload={onReload} />)}
     </div>
   );
 }
 
-function PieceRow({ p }: { p: Piece }) {
+const PRODUCTION_LABELS: Record<string, [string, string]> = {
+  aguardando: ["Aguardando produção", "bg-border/60 text-muted"],
+  em_producao: ["Em produção", "bg-sky-500/15 text-sky-500"],
+  produzida: ["Produzida", "bg-violet-500/15 text-violet-500"],
+  aprovada_interna: ["Aprovada internamente", "bg-indigo-500/15 text-indigo-500"],
+  aprovacao_cliente: ["Com o cliente", "bg-amber-500/15 text-amber-500"],
+  aprovada: ["Aprovada pelo cliente", "bg-ok/15 text-ok"],
+};
+
+function ProductionChip({ status }: { status: string }) {
+  const [label, cls] = PRODUCTION_LABELS[status] ?? [status, "bg-border/60 text-muted"];
+  return <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${cls}`}>{label}</span>;
+}
+
+function PieceRow({ p, canProduce, onReload }: { p: Piece; canProduce: boolean; onReload: () => Promise<void> | void }) {
   const [open, setOpen] = useState(false);
+  const d = p.deliverable;
   return (
     <div className="rounded-lg border border-border bg-surface">
       <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left">
@@ -389,16 +425,238 @@ function PieceRow({ p }: { p: Piece }) {
           <span className="block text-[11px] text-muted">{[p.channel, p.format].filter(Boolean).join(" · ") || "—"}</span>
         </span>
         <span className="flex items-center gap-2">
-          {p.deliverable ? <StatusChip status={p.deliverable.status} /> : <span className="rounded-full bg-border/60 px-2 py-0.5 text-[10px] text-muted">a produzir</span>}
+          {d ? <ProductionChip status={d.productionStatus} /> : <span className="rounded-full bg-border/60 px-2 py-0.5 text-[10px] text-muted">a produzir</span>}
+          {d && d.assets.length > 0 && <span className="text-[10px] text-muted">📎 {d.assets.length}</span>}
           <span className="text-muted">{open ? "▲" : "▼"}</span>
         </span>
       </button>
       {open && (
-        <div className="border-t border-border px-3 py-3">
+        <div className="space-y-3 border-t border-border px-3 py-3">
+          {canProduce && d && <PieceProduction d={d} onReload={onReload} />}
+          {!canProduce && d && d.assets.length > 0 && <AssetList assets={d.assets} />}
           {/* Conteúdo pronto para produção vindo da Linha Editorial. */}
-          <ErrorBoundary><ThemeContent theme={p} /></ErrorBoundary>
+          <details>
+            <summary className="cursor-pointer text-xs font-medium text-muted hover:text-foreground">Ver conteúdo / roteiro</summary>
+            <div className="mt-2 border-t border-border pt-2">
+              <ErrorBoundary><ThemeContent theme={p} /></ErrorBoundary>
+            </div>
+          </details>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Painel de produção de UMA peça na coluna do Designer: anexar arquivos
+ * (arte, vídeo, link) + mover a peça no fluxo (produção → aprovação interna). */
+function PieceProduction({ d, onReload }: {
+  d: NonNullable<Piece["deliverable"]>;
+  onReload: () => Promise<void> | void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [url, setUrl] = useState("");
+  const [name, setName] = useState("");
+  const [kind, setKind] = useState<"image" | "video" | "file" | "link">("image");
+  const [note, setNote] = useState("");
+
+  async function attach() {
+    if (!url.trim()) { setErr("Cole o link do arquivo (Drive, Dropbox, URL da arte/vídeo…)."); return; }
+    setBusy(true); setErr(null);
+    try {
+      await api(`/deliverables/${d.id}/assets`, {
+        method: "POST",
+        body: JSON.stringify({ url: url.trim(), name: name.trim() || undefined, kind, note: note.trim() || undefined }),
+      });
+      setUrl(""); setName(""); setNote("");
+      await onReload();
+    } catch (e) { setErr(e instanceof Error ? e.message : "Erro ao anexar"); }
+    finally { setBusy(false); }
+  }
+
+  async function status(action: string, actionNote?: string) {
+    setBusy(true); setErr(null);
+    try {
+      await api(`/deliverables/${d.id}/production-status`, {
+        method: "POST",
+        body: JSON.stringify({ action, note: actionNote }),
+      });
+      await onReload();
+    } catch (e) { setErr(e instanceof Error ? e.message : "Erro"); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border border-border bg-elevated/50 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted">Produção da peça</p>
+        <ProductionChip status={d.productionStatus} />
+      </div>
+
+      {d.assets.length > 0 && <AssetList assets={d.assets} />}
+
+      {/* Anexar arte / vídeo / arquivo por link. */}
+      <div className="space-y-2 rounded-md border border-dashed border-border p-2.5">
+        <p className="text-[11px] font-medium text-muted">Anexar arte, vídeo ou arquivo</p>
+        <div className="flex flex-wrap gap-1.5">
+          {(["image", "video", "file", "link"] as const).map((k) => (
+            <button key={k} onClick={() => setKind(k)}
+              className={`rounded-md border px-2 py-1 text-[11px] ${kind === k ? "border-brand bg-brand/10 font-semibold text-brand-strong dark:text-brand" : "border-border hover:bg-surface"}`}>
+              {k === "image" ? "🖼 Arte" : k === "video" ? "🎬 Vídeo" : k === "file" ? "📄 Arquivo" : "🔗 Link"}
+            </button>
+          ))}
+        </div>
+        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Cole o link (Drive, Dropbox, URL pública…)"
+          className="w-full rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-brand" />
+        <div className="flex flex-wrap gap-2">
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome (opcional)"
+            className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-brand" />
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Observação (opcional)"
+            className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-brand" />
+        </div>
+        <button onClick={attach} disabled={busy}
+          className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-strong disabled:opacity-50 dark:text-[#00390d]">
+          {busy ? "Enviando…" : "Anexar arquivo"}
+        </button>
+      </div>
+
+      {err && <p className="text-xs text-crit">{err}</p>}
+
+      {/* Fluxo da peça. */}
+      <div className="flex flex-wrap gap-1.5">
+        {(d.productionStatus === "aguardando" || d.productionStatus === "em_producao") && (
+          <>
+            {d.productionStatus === "aguardando" && (
+              <button onClick={() => status("start")} disabled={busy}
+                className="rounded-md border border-border px-2.5 py-1 text-[11px] hover:bg-surface">
+                Iniciar produção
+              </button>
+            )}
+            <button onClick={() => status("produced")} disabled={busy || d.assets.length === 0}
+              title={d.assets.length === 0 ? "Anexe ao menos um arquivo antes de marcar como produzida" : ""}
+              className="rounded-md bg-brand px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-brand-strong disabled:opacity-50 dark:text-[#00390d]">
+              Marcar produzida →
+            </button>
+          </>
+        )}
+        {d.productionStatus === "produzida" && (
+          <>
+            <button onClick={() => status("approve_internal")} disabled={busy}
+              className="rounded-md bg-ok px-2.5 py-1 text-[11px] font-semibold text-white hover:opacity-90 disabled:opacity-50">
+              Aprovar internamente ✓
+            </button>
+            <button onClick={() => { const n = prompt("O que ajustar nesta peça?"); if (n) status("reject_internal", n); }} disabled={busy}
+              className="rounded-md border border-border px-2.5 py-1 text-[11px] hover:bg-surface">
+              Reprovar / ajustar
+            </button>
+          </>
+        )}
+        {(d.productionStatus === "aprovada_interna" || d.productionStatus === "aprovacao_cliente") && (
+          <button onClick={() => status("reopen")} disabled={busy}
+            className="rounded-md border border-border px-2.5 py-1 text-[11px] hover:bg-surface">
+            Reabrir para ajuste
+          </button>
+        )}
+        {d.productionStatus === "aprovada" && (
+          <span className="text-[11px] text-ok">✓ Aprovada pelo cliente</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AssetList({ assets }: { assets: Asset[] }) {
+  // Só a última versão de cada peça (o array já vem ordenado desc por versão).
+  const latest = assets.length ? assets[0].version : 0;
+  const shown = assets.filter((a) => a.version === latest);
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[11px] font-medium text-muted">Arquivos anexados {latest > 1 && <span className="text-muted/70">(v{latest})</span>}</p>
+      {shown.map((a) => (
+        <a key={a.id} href={a.url} target="_blank" rel="noreferrer"
+          className="flex items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs hover:bg-elevated">
+          <span>{a.kind === "image" ? "🖼" : a.kind === "video" ? "🎬" : a.kind === "file" ? "📄" : "🔗"}</span>
+          <span className="min-w-0 flex-1 truncate">{a.name || a.url}</span>
+          <span className="text-muted">↗</span>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+/** Ações da coluna do Designer no nível da LINHA: gerar/copiar o link público
+ * com as peças produzidas para o cliente aprovar, e avançar para Aprovação
+ * Final quando a produção terminar. */
+function DesignActions({ line, onMove, onReload, busy }: {
+  line: Line;
+  onMove: (id: string, stage: string, note?: string) => void;
+  onReload: () => Promise<void> | void;
+  busy: boolean;
+}) {
+  const [genBusy, setGenBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const token = line.productionPortalToken;
+  const portalUrl = token && typeof window !== "undefined" ? `${window.location.origin}/producao/${token}` : null;
+
+  const producedCount = line.pieces.filter(
+    (p) => p.deliverable && ["produzida", "aprovada_interna", "aprovacao_cliente", "aprovada"].includes(p.deliverable.productionStatus),
+  ).length;
+
+  async function generate() {
+    setGenBusy(true); setErr(null);
+    try {
+      await api(`/editorial-strategies/${line.id}/production-portal`, { method: "POST" });
+      await onReload();
+    } catch (e) { setErr(e instanceof Error ? e.message : "Erro ao gerar link"); }
+    finally { setGenBusy(false); }
+  }
+
+  function copy() {
+    if (portalUrl) { navigator.clipboard.writeText(portalUrl); setCopied(true); setTimeout(() => setCopied(false), 1500); }
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border border-border bg-surface p-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold">Link das peças produzidas</p>
+        <span className="text-[11px] text-muted">{producedCount}/{line.piecesCount} produzidas</span>
+      </div>
+      <p className="text-xs text-muted">
+        Anexe as artes/vídeos em cada peça, marque como produzidas e gere o link público para o cliente aprovar.
+      </p>
+
+      {err && <p className="text-xs text-crit">{err}</p>}
+
+      {portalUrl ? (
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5 rounded-md border border-border bg-elevated px-2.5 py-1.5">
+            <span className="min-w-0 flex-1 truncate text-xs text-muted">{portalUrl}</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={copy} className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-strong dark:text-[#00390d]">
+              {copied ? "Copiado!" : "Copiar link"}
+            </button>
+            <a href={portalUrl} target="_blank" rel="noreferrer" className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-elevated">Abrir ↗</a>
+            <button onClick={generate} disabled={genBusy} className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-elevated disabled:opacity-50">
+              {genBusy ? "Atualizando…" : "Atualizar peças no link"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={generate} disabled={genBusy || producedCount === 0}
+          title={producedCount === 0 ? "Marque ao menos uma peça como produzida" : ""}
+          className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-strong disabled:opacity-50 dark:text-[#00390d]">
+          {genBusy ? "Gerando…" : "Gerar link das peças produzidas"}
+        </button>
+      )}
+
+      <div className="border-t border-border pt-3">
+        <button onClick={() => onMove(line.id, "final_review")} disabled={busy}
+          className="w-full rounded-md bg-ok px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50">
+          Enviar para Aprovação Final →
+        </button>
+      </div>
     </div>
   );
 }
@@ -440,19 +698,6 @@ function FinalChecklist({ line, onMove, busy }: { line: Line; onMove: (id: strin
       {!allChecked && <p className="mt-2 text-[11px] text-muted">Marque todos os itens para liberar “A Postar”.</p>}
     </div>
   );
-}
-
-function StatusChip({ status }: { status: string }) {
-  const map: Record<string, [string, string]> = {
-    generating: ["gerando", "bg-sky-500/15 text-sky-500"],
-    draft: ["rascunho", "bg-border/60 text-muted"],
-    internal_review: ["produzida", "bg-violet-500/15 text-violet-500"],
-    client_review: ["com cliente", "bg-amber-500/15 text-amber-500"],
-    approved: ["aprovada", "bg-ok/15 text-ok"],
-    delivered: ["entregue", "bg-ok/15 text-ok"],
-  };
-  const [label, cls] = map[status] ?? [status, "bg-border/60 text-muted"];
-  return <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${cls}`}>{label}</span>;
 }
 
 function statusLabel(status: string): string {
