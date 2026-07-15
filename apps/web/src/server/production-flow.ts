@@ -218,6 +218,25 @@ export async function syncStrategyStage(
   return target;
 }
 
+/** Garante que a linha tenha um token de portal do cliente, criando um se ainda
+ * não existir. Usado para SOLTAR o link assim que a PRIMEIRA peça fica pronta —
+ * o cliente já começa a aprovar enquanto as demais ainda são produzidas.
+ * Idempotente: devolve o token existente sem recriar. */
+export async function ensureProductionPortalToken(
+  organizationId: string,
+  strategyId: string,
+): Promise<string | null> {
+  const s = await prisma.editorialStrategy.findFirst({
+    where: { id: strategyId, organizationId },
+    select: { id: true, productionPortalToken: true },
+  });
+  if (!s) return null;
+  if (s.productionPortalToken) return s.productionPortalToken;
+  const token = randomBytes(24).toString("base64url");
+  await prisma.editorialStrategy.update({ where: { id: s.id }, data: { productionPortalToken: token } });
+  return token;
+}
+
 /** Quando TODAS as peças passam na revisão interna, gera o portal do cliente e
  * move as peças para aprovacao_cliente. Idempotente (só gera 1 token). */
 export async function openClientPortalIfReady(

@@ -34,9 +34,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
     });
     if (!strategy) throw Errors.notFound("Portal");
 
-    const pieces = strategy.editorialLines
-      .flatMap((l) => l.categories.flatMap((c) => c.themes))
-      .filter((t) => t.deliverable)
+    const allThemes = strategy.editorialLines.flatMap((l) => l.categories.flatMap((c) => c.themes));
+
+    // Só as peças PRONTAS para o cliente aparecem para aprovação. As demais
+    // (ainda em produção) não são mostradas — só contadas no aviso.
+    const READY = new Set(["produzida", "aprovada_interna", "aprovacao_cliente", "aprovada"]);
+    const pieces = allThemes
+      .filter((t) => t.deliverable && READY.has(t.deliverable.productionStatus))
       .map((t) => {
         const d = t.deliverable!;
         return {
@@ -55,6 +59,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
       version: strategy.version,
       productionStage: strategy.productionStage,
       pieces,
+      totalPieces: allThemes.length,
+      readyPieces: pieces.length,
+      pendingPieces: Math.max(0, allThemes.length - pieces.length),
     });
   });
 }

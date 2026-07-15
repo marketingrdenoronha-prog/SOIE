@@ -7,6 +7,7 @@ import {
   pushPieceEvent,
   syncStrategyStage,
   openClientPortalIfReady,
+  ensureProductionPortalToken,
   type PieceStatus,
 } from "@/server/production-flow";
 
@@ -84,6 +85,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const strategyId = await strategyIdOf(piece.id);
     let portalToken: string | null = null;
     if (strategyId) {
+      // Assim que a PRIMEIRA peça fica pronta (produzida), o link do cliente já
+      // é solto — ele começa a aprovar enquanto as demais são produzidas.
+      if (action === "produced") {
+        portalToken = await ensureProductionPortalToken(org, strategyId);
+      }
       if (action === "approve_internal") {
         portalToken = await openClientPortalIfReady(org, strategyId, { id: sub, name: user?.name });
       }

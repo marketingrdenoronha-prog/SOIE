@@ -28,8 +28,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     });
     if (!piece) throw Errors.notFound("Peça");
     if (piece.productionStatus === "aprovada") return ok({ productionStatus: "aprovada" });
-    if (piece.productionStatus !== "aprovacao_cliente") {
-      throw Errors.badRequest("Esta peça não está disponível para aprovação do cliente.");
+    // Aprovável assim que produzida (o link é solto peça a peça) — não exige a
+    // etapa de revisão interna.
+    const APPROVABLE = new Set(["produzida", "aprovada_interna", "aprovacao_cliente"]);
+    if (!APPROVABLE.has(piece.productionStatus)) {
+      throw Errors.badRequest("Esta peça ainda está sendo produzida.");
     }
 
     const who = authorName?.trim() || "Cliente";

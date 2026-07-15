@@ -15,7 +15,7 @@ const API = "/api/v1";
 /** Portal público de aprovação da produção. O cliente vê cada peça (conteúdo +
  * arquivos), comenta e aprova ou pede ajuste — peça por peça. Sem login. */
 export function ProductionPortalClient({ token }: { token: string }) {
-  const [data, setData] = useState<{ client: string; version: number; productionStage: string; pieces: Piece[] } | null>(null);
+  const [data, setData] = useState<{ client: string; version: number; productionStage: string; pieces: Piece[]; totalPieces?: number; readyPieces?: number; pendingPieces?: number } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [name, setName] = useState("");
 
@@ -36,6 +36,7 @@ export function ProductionPortalClient({ token }: { token: string }) {
 
   const total = data.pieces.length;
   const approved = data.pieces.filter((p) => p.productionStatus === "aprovada").length;
+  const pending = data.pendingPieces ?? 0;
 
   return (
     <Shell>
@@ -54,11 +55,31 @@ export function ProductionPortalClient({ token }: { token: string }) {
         />
       </div>
 
-      <div className="space-y-4">
-        {data.pieces.map((p, i) => (
-          <PieceCard key={p.id} p={p} index={i} token={token} authorName={name} onChanged={load} />
-        ))}
-      </div>
+      {pending > 0 && (
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-warn/40 bg-warn/10 p-3">
+          <span className="text-lg leading-none">⏳</span>
+          <div>
+            <p className="text-sm font-medium text-warn">
+              {pending} {pending === 1 ? "peça ainda está sendo produzida" : "peças ainda estão sendo produzidas"}.
+            </p>
+            <p className="text-xs text-muted">
+              Já pode aprovar as {total} {total === 1 ? "peça pronta" : "peças prontas"} abaixo — as demais aparecem aqui automaticamente quando ficarem prontas.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {total === 0 ? (
+        <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted">
+          As peças estão sendo produzidas e aparecerão aqui em breve para sua aprovação.
+        </p>
+      ) : (
+        <div className="space-y-4">
+          {data.pieces.map((p, i) => (
+            <PieceCard key={p.id} p={p} index={i} token={token} authorName={name} onChanged={load} />
+          ))}
+        </div>
+      )}
     </Shell>
   );
 }
@@ -70,8 +91,9 @@ function PieceCard({ p, index, token, authorName, onChanged }: {
   const [comment, setComment] = useState("");
   const [asking, setAsking] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // O portal só lista peças prontas (produzidas+); então cada peça está
+  // aprovada ou aguardando a decisão do cliente.
   const decided = p.productionStatus === "aprovada";
-  const inChange = p.productionStatus === "em_producao" || p.productionStatus === "produzida" || p.productionStatus === "aprovada_interna";
 
   async function approve() {
     setBusy(true); setErr(null);
@@ -105,8 +127,8 @@ function PieceCard({ p, index, token, authorName, onChanged }: {
           <p className="text-xs text-muted">{p.channel} · {p.type}</p>
         </div>
         <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-          decided ? "bg-ok/15 text-ok" : inChange ? "bg-warn/15 text-warn" : "bg-border/60 text-muted"
-        }`}>{decided ? "Aprovada" : inChange ? "Em ajuste" : "Aguardando você"}</span>
+          decided ? "bg-ok/15 text-ok" : "bg-border/60 text-muted"
+        }`}>{decided ? "Aprovada" : "Aguardando você"}</span>
       </div>
 
       {p.assets.length > 0 && (
