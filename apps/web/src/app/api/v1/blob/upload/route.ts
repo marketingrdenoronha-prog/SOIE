@@ -3,9 +3,28 @@ import jwt from "jsonwebtoken";
 import { prisma } from "@soie/db";
 import { env } from "@soie/config";
 import { jwtClaims } from "@soie/contracts";
+import { requireAuth } from "@/server/auth";
+import { ok, handle } from "@/server/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/** Fonte da verdade do token do Blob: process.env é o que o próprio SDK lê e
+ * o que a Vercel injeta ao conectar o store — evita qualquer divergência com o
+ * parse do @soie/config. */
+function blobToken(): string | undefined {
+  return process.env.BLOB_READ_WRITE_TOKEN || env.BLOB_READ_WRITE_TOKEN || undefined;
+}
+
+/** GET /api/v1/blob/upload — diagnóstico: diz se o Vercel Blob está configurado
+ * neste deployment (sem vazar o valor do token). Útil para saber, na hora do
+ * erro, se falta o BLOB_READ_WRITE_TOKEN no ambiente que você está testando. */
+export async function GET(req: Request) {
+  return handle(async () => {
+    requireAuth(req);
+    return ok({ configured: Boolean(blobToken()) });
+  });
+}
 
 /**
  * POST /api/v1/blob/upload
@@ -37,14 +56,15 @@ const MAX_BYTES = 5 * 1024 * 1024 * 1024 * 1024;
 
 export async function POST(req: Request): Promise<Response> {
   const body = (await req.json()) as HandleUploadBody;
+  const token = blobToken();
 
   try {
     const json = await handleUpload({
       body,
       request: req,
-      token: env.BLOB_READ_WRITE_TOKEN,
+      token,
       onBeforeGenerateToken: async (_pathname, clientPayload) => {
-        if (!env.BLOB_READ_WRITE_TOKEN) {
+        if (!token) {
           throw new Error(
             "Armazenamento de arquivos não configurado. Ative o Vercel Blob e defina BLOB_READ_WRITE_TOKEN.",
           );

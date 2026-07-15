@@ -492,6 +492,13 @@ function PieceProduction({ d, onReload }: {
     const selected = Array.from(fileList);
     setBusy(true); setErr(null);
     try {
+      // Preflight: se o Vercel Blob não estiver configurado neste deployment, dá
+      // um erro claro em vez do genérico "Failed to retrieve the client token".
+      const status = await api<{ configured: boolean }>("/blob/upload").catch(() => ({ configured: true }));
+      if (!status.configured) {
+        setErr("Vercel Blob não está configurado neste ambiente. No painel da Vercel: projeto soie-web → Storage → Blob → Connect Project (Production + Preview) e faça um Redeploy.");
+        return;
+      }
       const uploaded: Array<{ url: string; name: string; kind: string }> = [];
       for (let i = 0; i < selected.length; i++) {
         const file = selected[i]!;
