@@ -17,6 +17,7 @@ export function EditorialTab({ clientId }: { clientId: string }) {
   const [counts, setCounts] = useState<FormatCounts>({ ...EMPTY_FORMAT_COUNTS });
   const [objective, setObjective] = useState("");
   const [observations, setObservations] = useState("");
+  const [momento, setMomento] = useState("");
   const total = counts.video + counts.motion + counts.carrossel + counts.estatico;
 
   async function load() {
@@ -38,10 +39,12 @@ export function EditorialTab({ clientId }: { clientId: string }) {
           formatCounts: counts,
           objective: objective || undefined,
           observations: observations || undefined,
+          momento: momento || undefined,
         }),
       });
       setObjective("");
       setObservations("");
+      setMomento("");
       await load();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Erro ao gerar linha editorial");
@@ -122,6 +125,15 @@ export function EditorialTab({ clientId }: { clientId: string }) {
             value={objective}
             onChange={(e) => setObjective(e.target.value)}
             placeholder="Ex.: gerar autoridade e agendar avaliações; aquecer para a Black Friday…"
+            className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
+          />
+        </label>
+        <label className="mt-3 block">
+          <span className="text-xs font-medium text-muted">Momento / atualidade para os ganchos de vídeo (opcional)</span>
+          <input
+            value={momento}
+            onChange={(e) => setMomento(e.target.value)}
+            placeholder="Ex.: Copa do Mundo, BBB, Black Friday, volta às aulas — a IA usa isso p/ criar o gancho (newsjacking) nos vídeos."
             className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
           />
         </label>

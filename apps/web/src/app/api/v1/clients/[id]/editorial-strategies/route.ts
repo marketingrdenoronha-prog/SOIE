@@ -13,6 +13,7 @@ const createInput = z.object({
   brief: z.string().max(4000).optional(),
   objective: z.string().max(500).optional(),
   observations: z.string().max(4000).optional(),
+  momento: z.string().max(500).optional(),
   formatCounts: z
     .object({
       video: z.number().int().min(0).max(50).optional(),
@@ -62,6 +63,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       brief: input.brief,
       objective: input.objective,
       observations: input.observations,
+      momento: input.momento,
       formatCounts: input.formatCounts,
     });
     return ok(strategy, 201);

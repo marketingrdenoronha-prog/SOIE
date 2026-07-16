@@ -22,6 +22,9 @@ export async function generateNextStrategyVersion(
     brief?: string;
     objective?: string;
     observations?: string;
+    /** Momento/atualidade para newsjacking nos ganchos de vídeo (ex.: "Copa do
+     * Mundo"). Usado LITERALMENTE pela IA como fonte do evento atual. */
+    momento?: string;
     /** Direção do operador para um ajuste (modo manual). Vai para o brief e as
      * observações de geração. */
     guidance?: string;
@@ -88,6 +91,8 @@ export async function generateNextStrategyVersion(
       clientFeedback: feedback || undefined,
       objective: opts.objective,
       observations,
+      // Momento/atualidade p/ newsjacking nos ganchos de vídeo (input.momento).
+      momento: opts.momento?.trim() || undefined,
       brief,
     },
     requested: opts.formatCounts,
