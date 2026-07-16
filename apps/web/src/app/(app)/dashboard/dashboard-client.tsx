@@ -48,8 +48,9 @@ export function DashboardClient() {
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div>
-        <h1 className="text-xl font-semibold">Dashboard</h1>
-        <p className="text-sm text-muted">Visão real da operação — clientes, linhas editoriais, produção e custo de IA.</p>
+        <p className="label-caps text-muted">Visão geral</p>
+        <h1 className="text-[32px] font-bold leading-tight tracking-[-0.03em]">Dashboard</h1>
+        <p className="mt-1 text-sm text-muted">Visão real da operação — clientes, linhas editoriais, produção e custo de IA.</p>
       </div>
 
       {err && <p className="rounded-lg border border-rose-500/30 bg-rose-500/5 p-3 text-sm text-rose-500">{err}</p>}
@@ -66,24 +67,28 @@ export function DashboardClient() {
         <>
           <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <KpiCard
+              className="card-hover fade-up"
               label="Clientes ativos"
               value={String(data.clients.total)}
               hint={data.clients.semOnboarding > 0 ? `${data.clients.semOnboarding} sem onboarding` : "todos com onboarding"}
               trend={data.clients.semOnboarding > 0 ? "flat" : "up"}
             />
             <KpiCard
+              className="card-hover fade-up"
               label="Aprovações pendentes"
               value={String(data.approvals.pendentes)}
               hint={`${data.approvals.linhas} linhas · ${data.approvals.pecas} peças`}
               trend={data.approvals.pendentes > 0 ? "down" : "up"}
             />
             <KpiCard
+              className="card-hover fade-up"
               label="Peças em produção"
               value={String(data.pieces.aguardando + data.pieces.emProducao)}
               hint={`${data.pieces.produzida} produzidas · ${data.pieces.total} no total`}
               trend="flat"
             />
             <KpiCard
+              className="card-hover fade-up"
               label="Custo de IA (mês)"
               value={usd(data.ai.custoMesUsd)}
               hint={`${data.ai.execucoesMes} execuções · ${usd(data.ai.custoTotalUsd)} total`}
@@ -93,14 +98,21 @@ export function DashboardClient() {
 
           {/* Funil operacional — o fluxo linear da V2 com números reais. */}
           <section className="rounded-xl border border-border bg-elevated p-5">
-            <h2 className="mb-4 text-sm font-semibold">Funil operacional</h2>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-sm font-semibold">Funil operacional</h2>
+              <span className="label-caps text-muted">fluxo linear</span>
+            </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-              <FunnelStep label="Clientes" value={data.clients.total} href="/clients" />
-              <FunnelStep label="Dossiês prontos" value={data.clients.dossiesProntos} />
-              <FunnelStep label="Linhas editoriais" value={data.editorial.total} href="/editorial" />
-              <FunnelStep label="Em produção" value={data.editorial.emProducao} href="/production" />
-              <FunnelStep label="A postar" value={data.editorial.aPostar} href="/production" accent />
-              <FunnelStep label="No estoque" value={data.editorial.emAcervo} href="/editorial-stock" accent />
+              {([
+                ["Clientes", data.clients.total, "/clients", false],
+                ["Dossiês prontos", data.clients.dossiesProntos, undefined, false],
+                ["Linhas editoriais", data.editorial.total, "/editorial", false],
+                ["Em produção", data.editorial.emProducao, "/production", false],
+                ["A postar", data.editorial.aPostar, "/production", true],
+                ["No estoque", data.editorial.emAcervo, "/editorial-stock", true],
+              ] as Array<[string, number, string | undefined, boolean]>).map(([label, value, href, accent], i, arr) => (
+                <FunnelStep key={label} label={label} value={value} href={href} accent={accent} last={i === arr.length - 1} />
+              ))}
             </div>
           </section>
 
@@ -186,7 +198,10 @@ export function DashboardClient() {
                 accent
               />
               <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
-                <p className="text-2xl font-semibold tabular-nums text-emerald-500">
+                <p
+                  className="bg-clip-text text-2xl font-semibold tabular-nums text-transparent"
+                  style={{ backgroundImage: "linear-gradient(120deg, rgb(var(--foreground)), rgb(var(--tone-emerald)))" }}
+                >
                   {usd(data.ai.costSimulation.economiaUsd)}
                 </p>
                 <p className="mt-1 text-[11px] uppercase tracking-wide text-muted">
@@ -222,14 +237,16 @@ function fmtTokens(n: number): string {
   return String(n);
 }
 
-function FunnelStep({ label, value, href, accent }: { label: string; value: number; href?: string; accent?: boolean }) {
+function FunnelStep({ label, value, href, accent, last }: { label: string; value: number; href?: string; accent?: boolean; last?: boolean }) {
   const inner = (
-    <div className={`rounded-lg border p-3 text-center transition ${accent ? "border-brand/40 bg-brand/5" : "border-border/70"} ${href ? "hover:border-brand/60" : ""}`}>
-      <p className="text-2xl font-semibold tabular-nums">{value}</p>
-      <p className="mt-1 text-[11px] uppercase tracking-wide text-muted">{label}</p>
+    <div className={`relative rounded-lg border p-3 text-center ${accent ? "border-brand/40 bg-brand/5" : "border-border/70"} ${href ? "card-hover cursor-pointer" : ""}`}>
+      <p className={`text-[26px] font-semibold leading-none tabular-nums ${accent ? "text-brand-strong dark:text-brand" : ""}`}>{value}</p>
+      <p className="mt-1.5 text-[11px] uppercase tracking-wide text-muted">{label}</p>
+      {/* Seta ligando os passos do funil (some no último e no fim da linha). */}
+      {!last && <span className="pointer-events-none absolute -right-2.5 top-1/2 hidden -translate-y-1/2 text-muted/60 lg:block">→</span>}
     </div>
   );
-  return href ? <Link href={href}>{inner}</Link> : inner;
+  return href ? <Link href={href} className="block">{inner}</Link> : inner;
 }
 
 function StatRow({ label, value, accent }: { label: string; value: number; accent?: boolean }) {

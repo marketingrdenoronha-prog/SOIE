@@ -17,6 +17,14 @@
   --ok: 22 163 74;
   --warn: 180 120 4;
   --crit: 220 38 38;
+  /* Design System — tons de status (StageBadge & afins). Mesmos valores em
+     light/dark: leem bem sobre as duas superfícies. */
+  --tone-emerald: 16 185 129;  /* aprovado / acervo  #10B981 */
+  --tone-sky: 14 165 233;      /* revisão do cliente #0EA5E9 */
+  --tone-amber: 245 158 11;    /* em produção        #F59E0B */
+  --tone-rose: 244 63 94;      /* ajuste pedido      #F43F5E */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 }
 
 :root.dark {
@@ -55,4 +63,25 @@ body {
 :where(a, button, input, select, textarea):focus-visible {
   outline: 2px solid rgb(var(--brand));
   outline-offset: 1px;
+}
+
+/* Design System — utilitários de polimento reutilizáveis nas telas. */
+/* Card com leve elevação no hover (painéis clicáveis / KPIs). */
+.card-hover {
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.card-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-lg);
+  border-color: rgb(var(--brand) / 0.4);
+}
+/* Entrada suave (com stagger via style=animationDelay). */
+@keyframes ds-fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.fade-up { animation: ds-fade-up 0.35s ease both; }
+@media (prefers-reduced-motion: reduce) {
+  .fade-up { animation: none; }
+  .card-hover:hover { transform: none; }
 }

@@ -3,11 +3,13 @@ export function KpiCard({
   value,
   hint,
   trend,
+  className = "",
 }: {
   label: string;
   value: string;
   hint?: string;
   trend?: "up" | "down" | "flat";
+  className?: string;
 }) {
   const trendColor =
     trend === "up"
@@ -17,7 +19,7 @@ export function KpiCard({
         : "text-muted";
   const trendGlyph = trend === "up" ? "▲" : trend === "down" ? "▼" : "→";
   return (
-    <div className="rounded-xl border border-border bg-elevated p-4">
+    <div className={`rounded-xl border border-border bg-elevated p-4 ${className}`}>
       <p className="text-xs font-medium uppercase tracking-wider text-muted">
         {label}
       </p>
