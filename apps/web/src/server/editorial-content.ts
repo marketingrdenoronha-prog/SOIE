@@ -152,8 +152,8 @@ function staticCopy(i: number, ctx: GenerationContext): StructuredCopy {
     format: "estatico",
     static: {
       headline: shortHeadline(i),
-      subheadline: "Estrutura vira resultado previsível.",
-      body: "Clareza, prova e consistência — sem improviso.",
+      subheadline: "Sem estrutura, todo o seu esforço vira resultado imprevisível.",
+      body: "Clareza pra entenderem você em segundos, prova pra sustentar a promessa e consistência pra manter o ritmo. É isso que separa quem só aparece de quem vende.",
       cta: shortCta(i),
       designNotes: `Alto contraste, headline em destaque no topo, muito respiro, logo e CTA no rodapé. 1 ideia visual forte. Marca: ${ctx.brand}.`,
     },

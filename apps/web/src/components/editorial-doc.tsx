@@ -112,12 +112,32 @@ function StructuredCopyView({ copy, hook, cta }: { copy: StructuredCopy; hook?: 
   if (copy.format === "estatico") {
     const s = copy.static;
     return (
-      <div className="space-y-2 rounded-lg border border-border bg-surface p-3 text-sm">
-        {s?.headline && <p className="text-base font-semibold">{text(s.headline)}</p>}
-        {s?.subheadline && <p className="text-muted">{text(s.subheadline)}</p>}
-        {s?.body && <p className="whitespace-pre-wrap">{text(s.body)}</p>}
-        {s?.cta && <p className="font-medium text-brand">{text(s.cta)}</p>}
-        {s?.designNotes && <p className="text-xs text-muted">🎨 {text(s.designNotes)}</p>}
+      <div className="space-y-3 rounded-lg border border-border bg-surface p-3 text-sm">
+        {s?.headline && (
+          <div>
+            <p className="label-caps text-brand">Headline</p>
+            <p className="mt-0.5 text-base font-semibold">{text(s.headline)}</p>
+          </div>
+        )}
+        {s?.subheadline && (
+          <div>
+            <p className="label-caps text-brand">Subheadline</p>
+            <p className="mt-0.5 text-muted">{text(s.subheadline)}</p>
+          </div>
+        )}
+        {s?.body && (
+          <div>
+            <p className="label-caps text-brand">Corpo</p>
+            <p className="mt-0.5 whitespace-pre-wrap">{text(s.body)}</p>
+          </div>
+        )}
+        {s?.cta && (
+          <div>
+            <p className="label-caps text-brand">CTA</p>
+            <p className="mt-0.5 font-medium text-brand">{text(s.cta)}</p>
+          </div>
+        )}
+        {s?.designNotes && <p className="border-t border-border pt-2 text-xs text-muted">🎨 {text(s.designNotes)}</p>}
       </div>
     );
   }
