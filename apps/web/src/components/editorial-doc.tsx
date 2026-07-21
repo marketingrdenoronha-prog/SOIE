@@ -68,6 +68,12 @@ export function ThemeContent({ theme }: { theme: any }) {
   );
 }
 
+/** Exibe no máximo 4 telas de carrossel; se houver mais (dados legados),
+ * mantém as 3 primeiras + a última (o CTA), preservando começo, meio e fim. */
+function capSlides<T>(arr: T[]): T[] {
+  return arr.length > 4 ? [...arr.slice(0, 3), arr[arr.length - 1]] : arr;
+}
+
 function CopyBody({ copy, hook, cta }: { copy: unknown; hook?: unknown; cta?: unknown }) {
   if (isStructuredCopy(copy)) return <StructuredCopyView copy={copy} hook={hook} cta={cta} />;
 
@@ -75,7 +81,7 @@ function CopyBody({ copy, hook, cta }: { copy: unknown; hook?: unknown; cta?: un
   if (Array.isArray(copy)) {
     return (
       <div className="space-y-2">
-        {copy.map((screen, i) => (
+        {capSlides(copy).map((screen, i) => (
           <div key={i} className="rounded-lg border border-border bg-surface p-3">
             <p className="label-caps text-brand">Tela {String(i + 1).padStart(2, "0")}</p>
             <p className="mt-1 whitespace-pre-wrap text-sm">{text(screen)}</p>
@@ -90,7 +96,7 @@ function CopyBody({ copy, hook, cta }: { copy: unknown; hook?: unknown; cta?: un
 
 function StructuredCopyView({ copy, hook, cta }: { copy: StructuredCopy; hook?: unknown; cta?: unknown }) {
   if (copy.format === "carrossel") {
-    const slides = copy.slides ?? [];
+    const slides = capSlides(copy.slides ?? []);
     return (
       <div className="space-y-2">
         {slides.map((s, i) => (

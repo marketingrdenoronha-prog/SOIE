@@ -192,11 +192,10 @@ export function demoDeliverableSpec(type: DeliverableType, channel: Channel, bri
     case "carousel":
       return {
         slides: [
-          { n: 1, title: "3 erros que travam seu resultado", body: "Deslize →", designNote: "Título grande, alto contraste" },
-          { n: 2, title: "Erro 1", body: "Falar de você em vez do cliente.", designNote: "Ícone + frase curta" },
-          { n: 3, title: "Erro 2", body: "Não mostrar prova.", designNote: "Print/case real" },
-          { n: 4, title: "Erro 3", body: "Nenhuma chamada clara.", designNote: "Seta apontando o CTA" },
-          { n: 5, title: "Bora resolver?", body: "Chama no direct.", designNote: "CTA em destaque" },
+          { n: 1, title: "3 erros que travam seu resultado", body: "Você posta, aparece, se esforça — e mesmo assim o retorno não vem. Na maioria das vezes o problema não é volume de conteúdo: são erros de estrutura que sabotam tudo por trás. Deslize que eu te mostro os três mais comuns.", designNote: "Título grande, alto contraste; seta 'deslize'" },
+          { n: 2, title: "Erro 1 — falar de você, não do cliente", body: "Quando a comunicação gira em torno do que VOCÊ faz, o cliente não se enxerga ali e passa reto. Vire a chave: fale da dor, do desejo e da rotina dele. É isso que faz a pessoa parar o dedo e sentir que aquele conteúdo foi feito pra ela.", designNote: "Ícone + antes/depois curto" },
+          { n: 3, title: "Erro 2 — não mostrar prova", body: "Promessa sem prova é só mais um anúncio que ninguém acredita. Print de resultado, case real, depoimento e bastidor constroem a confiança que a venda precisa. Não peça pra acreditar em você — mostre o processo e o resultado acontecendo.", designNote: "Print/case real em destaque" },
+          { n: 4, title: "Bora resolver isso juntos?", body: "Se você se reconheceu em algum desses erros, o próximo passo é ajustar a estrutura antes de produzir mais conteúdo no vácuo. Me chama no direct que eu te mostro por onde começar hoje mesmo.", designNote: "CTA em destaque, seta apontando" },
         ],
         caption: "Qual desses erros você já cometeu? Conta aqui 👇",
         cta: "Chama no direct",

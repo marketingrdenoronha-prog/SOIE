@@ -121,15 +121,26 @@ function shortCta(i: number): string {
   return SHORT_CTAS[i % SHORT_CTAS.length]!;
 }
 
-/** Carrossel: texto CURTO por slide (≤10 palavras) para casar com a arte. */
+/** Carrossel: NO MÁXIMO 4 telas (capa + 2 de conteúdo + CTA), cada uma com
+ * copy DESENVOLVIDA (2 a 4 frases) — nunca frase solta e vaga. */
 function carouselCopy(i: number, ctx: GenerationContext): StructuredCopy {
   const slides = [
-    { title: "Capa", text: shortHeadline(i) },
-    { title: "Slide 2", text: "Aparecer mais não é ter estrutura." },
-    { title: "Slide 3", text: "Clareza: entendem você em segundos." },
-    { title: "Slide 4", text: "Prova: cases valem mais que promessa." },
-    { title: "Slide 5", text: "Consistência: método, não sorte." },
-    { title: "CTA", text: shortCta(i) },
+    {
+      title: "Capa",
+      text: `${shortHeadline(i)}. Você posta, aparece e se dedica — mas o retorno não vem na mesma proporção do esforço. Quase sempre o problema não é volume de conteúdo, é estrutura. Deslize que a gente mostra o que realmente muda o jogo.`,
+    },
+    {
+      title: "Clareza",
+      text: "Se o seu público não entende em segundos o que você resolve, ele passa reto. Clareza é falar da dor e do desejo do cliente antes de falar de você — quando a pessoa se enxerga na mensagem, ela para o dedo e presta atenção de verdade.",
+    },
+    {
+      title: "Prova",
+      text: "Promessa sem prova é só mais um anúncio em que ninguém acredita. Case real, print de resultado, depoimento e bastidor constroem a confiança que a venda precisa. Não peça pra acreditar em você — mostre o processo e o resultado acontecendo.",
+    },
+    {
+      title: "CTA",
+      text: `Se você se reconheceu, o próximo passo é ajustar a estrutura antes de produzir mais conteúdo no vácuo. Estrutura vira resultado previsível — e dá pra começar hoje com a ${ctx.brand}. ${shortCta(i)}`,
+    },
   ];
   return { format: "carrossel", slides };
 }

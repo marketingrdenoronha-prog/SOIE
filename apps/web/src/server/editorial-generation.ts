@@ -207,6 +207,19 @@ export async function generateEditorialThemes(opts: {
 
 /** Monta as `editorialLines` (uma linha, categorias por formato) para o create
  * do Prisma, a partir dos baldes por formato. */
+/**
+ * Rede de segurança: garante NO MÁXIMO 4 telas no carrossel. Se a IA devolver
+ * mais, mantém as 3 primeiras e a última (o CTA) — preservando começo, meio e
+ * fim. Só mexe em copy de carrossel; qualquer outro formato passa intacto.
+ */
+function clampCarousel(copy: unknown): unknown {
+  if (!copy || typeof copy !== "object") return copy;
+  const c = copy as { format?: string; slides?: unknown[] };
+  if (c.format !== "carrossel" || !Array.isArray(c.slides) || c.slides.length <= 4) return copy;
+  const slides = c.slides;
+  return { ...c, slides: [...slides.slice(0, 3), slides[slides.length - 1]] };
+}
+
 export function bucketsToLines(
   buckets: Record<FormatKey, GeneratedTheme[]>,
   organizationId: string,
@@ -233,7 +246,7 @@ export function bucketsToLines(
               title: t.title,
               channel: t.channel,
               format: t.format,
-              copy: t.copy as never,
+              copy: clampCarousel(t.copy) as never,
               strategicObjective: t.strategicObjective,
               hook: t.hook,
               cta: t.cta,
