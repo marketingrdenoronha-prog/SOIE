@@ -11,14 +11,22 @@ interface Comment {
   authorName: string | null;
   createdAt: string;
 }
+interface HistoryEntry {
+  version: number;
+  comment: string | null;
+  authorName: string | null;
+  createdAt: string;
+}
 interface EditorialAdj {
   strategyId: string;
   version: number;
+  latestVersion: number;
   positioning: string | null;
   clientId: string | null;
   clientName: string;
   changesRequestedAt: string | null;
   comments: Comment[];
+  history: HistoryEntry[];
 }
 interface MaterialAdj {
   deliverableId: string;
@@ -99,6 +107,37 @@ function CommentList({ comments }: { comments: Comment[] }) {
   );
 }
 
+/** Histórico completo de ajustes do cliente, em todas as versões — para que
+ * nenhum pedido se perca quando uma nova versão é gerada. Recolhível. */
+function HistoryBlock({ history, liveVersion }: { history: HistoryEntry[]; liveVersion: number }) {
+  const [open, setOpen] = useState(false);
+  if (history.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-border bg-elevated/40">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wider text-muted hover:text-foreground"
+      >
+        <span>Histórico de ajustes deste cliente ({history.length})</span>
+        <span className="text-sm">{open ? "−" : "+"}</span>
+      </button>
+      {open && (
+        <ul className="space-y-1.5 border-t border-border px-3 py-2">
+          {history.map((h, i) => (
+            <li key={i} className="rounded-md border border-border bg-surface px-2.5 py-1.5">
+              <div className="flex items-center gap-2">
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${h.version === liveVersion ? "bg-warn/15 text-warn" : "bg-border/60 text-muted"}`}>V{h.version}</span>
+                <span className="text-[10px] text-muted">{h.authorName ?? "Cliente"} · {dt(h.createdAt)}</span>
+              </div>
+              {h.comment && <p className="mt-1 text-xs">{h.comment}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function EditorialCard({ item }: { item: EditorialAdj }) {
   const [mode, setMode] = useState<"auto" | "manual">("auto");
   const [busy, setBusy] = useState<null | "summary" | "apply">(null);
@@ -147,14 +186,19 @@ function EditorialCard({ item }: { item: EditorialAdj }) {
       </div>
 
       <div>
-        <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-muted">O que o cliente pediu</p>
+        <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-muted">O que o cliente pediu (V{item.version})</p>
         <CommentList comments={item.comments} />
       </div>
 
-      {applied ? (
+      <HistoryBlock history={item.history} liveVersion={item.version} />
+
+      {applied || item.latestVersion > item.version ? (
         <div className="rounded-lg border border-ok/40 bg-ok/10 p-3 text-sm">
-          <p className="font-medium text-ok">✓ Nova versão V{applied.version} gerada.</p>
-          {applied.demo && <p className="mt-1 text-xs text-warn">Gerada em modo demo (configure uma chave de IA para conteúdo real).</p>}
+          <p className="font-medium text-ok">✓ Nova versão V{applied?.version ?? item.latestVersion} já gerada.</p>
+          {applied?.demo && <p className="mt-1 text-xs text-warn">Gerada em modo demo (configure uma chave de IA para conteúdo real).</p>}
+          {!applied && (
+            <p className="mt-1 text-xs text-muted">O ajuste desta versão já foi atendido — revise e envie a nova versão ao cliente.</p>
+          )}
           {item.clientId && (
             <Link href={`/clients/${item.clientId}`} className="mt-2 inline-block rounded-md border border-border px-3 py-1.5 text-xs hover:bg-elevated">
               Revisar e enviar ao cliente →

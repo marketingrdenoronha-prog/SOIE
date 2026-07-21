@@ -93,6 +93,14 @@ export function EditorialReviewClient({ token }: { token: string }) {
               ? "A equipe foi notificada e seguirá para a produção dos conteúdos."
               : "Seu comentário foi enviado para a equipe, que criará/refinará a próxima versão."}
           </p>
+          {done === "changes_requested" && (
+            <button
+              onClick={() => { setDone(null); setComment(""); setAdjusting(true); load(); }}
+              className="mt-4 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface"
+            >
+              Enviar outro ajuste
+            </button>
+          )}
         </div>
       </Centered>
     );
