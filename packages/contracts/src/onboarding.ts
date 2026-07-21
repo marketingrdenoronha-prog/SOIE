@@ -84,7 +84,9 @@ export const onboardingStepVoice = z.object({
   doList: z.array(z.string().max(1000)).max(30).optional(),
   dontList: z.array(z.string().max(1000)).max(30).optional(),
   referenceProfiles: z.array(z.string().max(300)).max(20).optional(),
-  referenceExamples: z.string().max(4000).optional(),
+  // Campo para COLAR material bruto do próprio cliente (posts, textos, e-mails).
+  // Sem limite de caracteres por decisão de produto — o operador cola o que tiver.
+  referenceExamples: z.string().optional(),
 });
 export type OnboardingStepVoice = z.infer<typeof onboardingStepVoice>;
 
