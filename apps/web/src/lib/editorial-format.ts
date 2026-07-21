@@ -42,7 +42,7 @@ export function deliverableTypeForFormat(key: string): "video_script" | "motion_
 
 export interface CopySection { label: string; text: string }
 export interface CopySlide { title?: string; text: string }
-export interface StaticCopy { headline: string; subheadline?: string; body: string; cta?: string; designNotes?: string }
+export interface StaticCopy { headline: string; subheadline?: string; body: string; caption?: string; cta?: string; designNotes?: string }
 
 /** Copy completa estruturada, por formato. */
 export interface StructuredCopy {

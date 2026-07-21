@@ -154,6 +154,10 @@ function staticCopy(i: number, ctx: GenerationContext): StructuredCopy {
       headline: shortHeadline(i),
       subheadline: "Sem estrutura, todo o seu esforço vira resultado imprevisível.",
       body: "Clareza pra entenderem você em segundos, prova pra sustentar a promessa e consistência pra manter o ritmo. É isso que separa quem só aparece de quem vende.",
+      caption:
+        "Você já sentiu que faz tudo certo — posta, aparece, se dedica — e mesmo assim o retorno não vem no mesmo tamanho do esforço? Na maioria das vezes o problema não é falta de trabalho, é falta de estrutura por trás do conteúdo. " +
+        "Quando não existe clareza, o público não entende em segundos o que você resolve e passa reto. Quando não existe prova, a promessa não se sustenta e a venda trava na desconfiança. E quando não existe consistência, cada post vira um recomeço do zero. " +
+        `Estrutura é o que transforma esforço em resultado previsível — e é exatamente por aí que a gente começa na ${ctx.brand}. Me chama que eu te mostro o primeiro passo.`,
       cta: shortCta(i),
       designNotes: `Alto contraste, headline em destaque no topo, muito respiro, logo e CTA no rodapé. 1 ideia visual forte. Marca: ${ctx.brand}.`,
     },

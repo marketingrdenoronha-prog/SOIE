@@ -137,6 +137,12 @@ function StructuredCopyView({ copy, hook, cta }: { copy: StructuredCopy; hook?: 
             <p className="mt-0.5 font-medium text-brand">{text(s.cta)}</p>
           </div>
         )}
+        {s?.caption && (
+          <div className="border-t border-border pt-2">
+            <p className="label-caps text-brand">Legenda (post)</p>
+            <p className="mt-0.5 whitespace-pre-wrap">{text(s.caption)}</p>
+          </div>
+        )}
         {s?.designNotes && <p className="border-t border-border pt-2 text-xs text-muted">🎨 {text(s.designNotes)}</p>}
       </div>
     );
