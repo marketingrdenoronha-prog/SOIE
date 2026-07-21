@@ -25,10 +25,10 @@ export type OnboardingStepIdentity = z.infer<typeof onboardingStepIdentity>;
 
 /** Passo 2 — Objetivos estratégicos e prazos. */
 export const onboardingStepGoals = z.object({
-  primaryObjective: z.string().min(1, "Objetivo principal é obrigatório").max(500).optional(),
-  secondaryObjectives: z.array(z.string().max(300)).max(5).optional(),
+  primaryObjective: z.string().min(1, "Objetivo principal é obrigatório").max(2000).optional(),
+  secondaryObjectives: z.array(z.string().max(1000)).max(20).optional(),
   horizon: z.enum(["30d", "90d", "6m", "12m"]).optional(),
-  successMetrics: z.string().max(500).optional(),
+  successMetrics: z.string().max(1000).optional(),
 });
 export type OnboardingStepGoals = z.infer<typeof onboardingStepGoals>;
 
@@ -53,11 +53,11 @@ export type OnboardingStepOffer = z.infer<typeof onboardingStepOffer>;
 
 /** Passo 4 — ICP (perfil de cliente ideal). */
 export const onboardingStepICP = z.object({
-  description: z.string().max(1000).optional(),
-  demographics: z.string().max(600).optional(),
-  painPoints: z.array(z.string().max(300)).max(10).optional(),
-  desires: z.array(z.string().max(300)).max(10).optional(),
-  channelsWhereTheyAre: z.array(z.string().max(60)).max(10).optional(),
+  description: z.string().max(4000).optional(),
+  demographics: z.string().max(2000).optional(),
+  painPoints: z.array(z.string().max(1000)).max(30).optional(),
+  desires: z.array(z.string().max(1000)).max(30).optional(),
+  channelsWhereTheyAre: z.array(z.string().max(120)).max(20).optional(),
 });
 export type OnboardingStepICP = z.infer<typeof onboardingStepICP>;
 
@@ -68,31 +68,31 @@ export const onboardingStepCompetition = z.object({
       z.object({
         name: z.string().min(1).max(200),
         url: z.string().max(500).optional(),
-        note: z.string().max(500).optional(),
+        note: z.string().max(1000).optional(),
       }),
     )
-    .max(15)
+    .max(20)
     .optional(),
-  differentiators: z.array(z.string().max(300)).max(10).optional(),
+  differentiators: z.array(z.string().max(1000)).max(20).optional(),
 });
 export type OnboardingStepCompetition = z.infer<typeof onboardingStepCompetition>;
 
 /** Passo 6 — Tom de voz e referências. */
 export const onboardingStepVoice = z.object({
-  tone: z.string().max(500).optional(),
+  tone: z.string().max(2000).optional(),
   formalityLevel: z.enum(["low", "medium", "high"]).optional(),
-  doList: z.array(z.string().max(200)).max(10).optional(),
-  dontList: z.array(z.string().max(200)).max(10).optional(),
-  referenceProfiles: z.array(z.string().max(200)).max(10).optional(),
-  referenceExamples: z.string().max(1000).optional(),
+  doList: z.array(z.string().max(1000)).max(30).optional(),
+  dontList: z.array(z.string().max(1000)).max(30).optional(),
+  referenceProfiles: z.array(z.string().max(300)).max(20).optional(),
+  referenceExamples: z.string().max(4000).optional(),
 });
 export type OnboardingStepVoice = z.infer<typeof onboardingStepVoice>;
 
 /** Passo 7 — Materiais complementares, links, observações finais. */
 export const onboardingStepMaterials = z.object({
-  materialLinks: z.array(z.string().max(500)).max(20).optional(),
+  materialLinks: z.array(z.string().max(500)).max(30).optional(),
   fileIds: z.array(z.string().uuid()).max(20).optional(),
-  observations: z.string().max(2000).optional(),
+  observations: z.string().max(8000).optional(),
 });
 export type OnboardingStepMaterials = z.infer<typeof onboardingStepMaterials>;
 

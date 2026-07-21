@@ -17,7 +17,7 @@ export function handle(
 ): Promise<NextResponse> {
   return fn().catch((err) => {
     if (err instanceof ZodError) {
-      return fail("validation_error", "Dados inválidos", 400, err.issues);
+      return fail("validation_error", zodErrorMessage(err), 400, err.issues);
     }
     if (err instanceof HttpError) {
       return fail(err.code, err.message, err.status);
@@ -50,6 +50,59 @@ export function handle(
     const detail = err instanceof Error ? err.message : String(err);
     return fail("internal_error", detail || "Erro inesperado", 500);
   });
+}
+
+/** Rótulos amigáveis por chave de campo (onboarding e afins). Cai no próprio
+ * caminho quando a chave não está mapeada — nunca mostra "Dados inválidos" seco. */
+const FIELD_LABELS: Record<string, string> = {
+  displayName: "Nome público",
+  primaryObjective: "Objetivo principal",
+  secondaryObjectives: "Objetivos secundários",
+  successMetrics: "Métricas de sucesso",
+  description: "Descrição do cliente ideal",
+  demographics: "Perfil demográfico",
+  painPoints: "Dores",
+  desires: "Desejos",
+  channelsWhereTheyAre: "Canais onde estão",
+  tone: "Como a marca fala",
+  doList: "Fazer",
+  dontList: "Não fazer",
+  referenceProfiles: "Perfis de referência",
+  referenceExamples: "Textos de exemplo",
+  differentiators: "Diferenciais",
+  observations: "Observações",
+  materialLinks: "Links",
+};
+
+/** Traduz o motivo de uma issue do Zod para PT, com o limite quando houver. */
+function zodReason(issue: ZodError["issues"][number]): string {
+  const i = issue as { code?: string; type?: string; maximum?: number; minimum?: number };
+  if (i.code === "too_big") {
+    if (i.type === "array") return `máximo de ${i.maximum} itens`;
+    return `passou do limite de ${i.maximum} caracteres`;
+  }
+  if (i.code === "too_small") {
+    if (i.type === "array") return `mínimo de ${i.minimum} itens`;
+    if (i.minimum === 1) return "campo obrigatório";
+    return `mínimo de ${i.minimum} caracteres`;
+  }
+  if (i.code === "invalid_enum_value") return "valor não permitido";
+  if (i.code === "invalid_type") return "tipo inválido ou vazio";
+  if (i.code === "invalid_string") return "formato inválido";
+  return issue.message;
+}
+
+/** Monta uma mensagem legível a partir do 1º erro de validação: qual campo e
+ * por quê — em vez do genérico "Dados inválidos". */
+function zodErrorMessage(err: ZodError): string {
+  const first = err.issues[0];
+  if (!first) return "Dados inválidos";
+  // Último segmento de texto do caminho = a chave do campo (ignora índices).
+  const keys = first.path.filter((p): p is string => typeof p === "string" && p !== "payload");
+  const key = keys[keys.length - 1];
+  const field = (key && FIELD_LABELS[key]) || keys.join(" › ") || "campo";
+  const extra = err.issues.length > 1 ? ` (e mais ${err.issues.length - 1})` : "";
+  return `Dados inválidos — ${field}: ${zodReason(first)}${extra}`;
 }
 
 export class HttpError extends Error {
