@@ -413,3 +413,117 @@ export async function summarizeEditorialAdjustment(
     };
   }
 }
+
+export interface AdjustmentQuestionGroup {
+  /** O ajuste específico que o cliente pediu (identificado pela IA). */
+  topic: string;
+  /** Perguntas de esclarecimento ligadas a ESSE ajuste (nunca genéricas). */
+  questions: string[];
+}
+
+/**
+ * Ajuste da linha editorial — geração de PERGUNTAS DE ESCLARECIMENTO. A IA lê
+ * TODOS os pedidos de ajuste do cliente juntos, identifica cada um e monta
+ * perguntas específicas (jamais padrão) para a EQUIPE fazer ao cliente enquanto
+ * anota as respostas. As respostas depois alimentam um reajuste mais assertivo.
+ */
+export async function generateAdjustmentQuestions(
+  input: {
+    clientName: string;
+    niche?: string;
+    positioning?: string | null;
+    version: number;
+    feedback: string;
+    themes?: string[];
+  },
+  opts?: AIRunOpts,
+): Promise<{ items: AdjustmentQuestionGroup[]; _demo?: boolean }> {
+  if (!HAS_AI_KEY) {
+    // Demo: quebra o feedback em linhas e devolve perguntas ancoradas no texto
+    // de cada pedido (ainda assim ligadas ao que foi pedido, não 100% padrão).
+    const lines = input.feedback
+      .split(/\n|(?<=[.!?])\s+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 8)
+      .slice(0, 6);
+    const items = (lines.length ? lines : ["Ajuste solicitado pelo cliente"]).map((l) => ({
+      topic: l.slice(0, 140),
+      questions: [
+        `Sobre "${l.slice(0, 60)}…": qual exatamente é o resultado esperado com esse ajuste?`,
+        `Tem algum exemplo, referência ou tema específico que deve entrar (ou sair) por causa disso?`,
+      ],
+    }));
+    return { items, _demo: true };
+  }
+
+  const system =
+    "Você é um estrategista de conteúdo conduzindo o refinamento de uma linha editorial. " +
+    "Abaixo estão TODOS os pedidos de ajuste que o cliente fez (podem vir em mensagens diferentes, reunidos). " +
+    "Tarefa: (1) IDENTIFIQUE cada ajuste distinto pedido pelo cliente; (2) para CADA um, gere de 1 a 3 PERGUNTAS " +
+    "DE ESCLARECIMENTO que a EQUIPE fará ao cliente para executar o ajuste com precisão. " +
+    "REGRAS DAS PERGUNTAS: devem ser 100% específicas do ajuste em questão, referenciando o que o cliente escreveu; " +
+    "cada pergunta precisa destravar uma decisão concreta de conteúdo (tema, gancho, tom, formato, exemplo, prova). " +
+    "É PROIBIDO perguntas genéricas/padrão (ex.: 'qual seu objetivo?', 'qual seu público?', 'qual o tom?') — só entram se " +
+    "forem inevitavelmente ligadas ao pedido específico. Se um pedido já estiver claro, gere 1 pergunta de confirmação objetiva. " +
+    'Responda EXCLUSIVAMENTE com JSON válido {"items":[{"topic":string,"questions":string[]}]} em pt-BR, sem markdown.';
+  const user = [
+    `Cliente: ${input.clientName}`,
+    input.niche ? `Mercado/nicho: ${input.niche}` : "",
+    input.positioning ? `Posicionamento atual: ${input.positioning}` : "",
+    `Versão atual: V${input.version}`,
+    input.themes?.length ? `Temas atuais: ${input.themes.slice(0, 24).join("; ")}` : "",
+    "",
+    `TODOS OS PEDIDOS DE AJUSTE DO CLIENTE (reunidos):\n${input.feedback}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const startedAt = Date.now();
+  try {
+    const res = await gateway.complete(
+      {
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        maxTokens: 1600,
+        responseFormat: "json",
+      },
+      MODEL_POLICY,
+    );
+    if (opts?.organizationId) {
+      await logExecution(opts.organizationId, {
+        provider: res.provider,
+        model: res.model,
+        inputTokens: res.usage.inputTokens,
+        outputTokens: res.usage.outputTokens,
+        latencyMs: Date.now() - startedAt,
+        requestRef: "editorial-adjust-questions",
+      });
+    }
+    const parsed = extractJson(res.text) as { items?: unknown } | null;
+    const rawItems = Array.isArray(parsed?.items) ? parsed!.items : [];
+    const items: AdjustmentQuestionGroup[] = rawItems
+      .map((it) => {
+        const o = (it ?? {}) as { topic?: unknown; questions?: unknown };
+        const topic = typeof o.topic === "string" ? o.topic.trim() : "";
+        const questions = Array.isArray(o.questions)
+          ? o.questions.map((q) => String(q).trim()).filter(Boolean).slice(0, 4)
+          : [];
+        return { topic, questions };
+      })
+      .filter((it) => it.topic && it.questions.length > 0)
+      .slice(0, 10);
+    if (!items.length) {
+      return {
+        items: [{ topic: "Ajuste pedido pelo cliente", questions: ["Confirme com o cliente o que exatamente deve mudar e por quê."] }],
+      };
+    }
+    return { items };
+  } catch {
+    return {
+      items: [{ topic: "Ajuste pedido pelo cliente", questions: ["Não foi possível gerar as perguntas agora — confirme com o cliente o que deve mudar e tente novamente."] }],
+      _demo: true,
+    };
+  }
+}

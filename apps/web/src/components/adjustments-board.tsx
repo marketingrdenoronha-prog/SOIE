@@ -138,23 +138,28 @@ function HistoryBlock({ history, liveVersion }: { history: HistoryEntry[]; liveV
   );
 }
 
+interface QGroup { topic: string; questions: string[] }
+
 function EditorialCard({ item }: { item: EditorialAdj }) {
   const [mode, setMode] = useState<"auto" | "manual">("auto");
-  const [busy, setBusy] = useState<null | "summary" | "apply">(null);
+  const [busy, setBusy] = useState<null | "questions" | "apply">(null);
   const [err, setErr] = useState<string | null>(null);
-  const [summary, setSummary] = useState<{ understood: string; plan: string[]; _demo?: boolean } | null>(null);
+  const [questions, setQuestions] = useState<QGroup[] | null>(null);
+  const [qDemo, setQDemo] = useState(false);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
   const [guidance, setGuidance] = useState("");
   const [applied, setApplied] = useState<{ version: number; demo: boolean } | null>(null);
 
-  async function runSummary() {
-    setBusy("summary"); setErr(null);
+  async function runQuestions() {
+    setBusy("questions"); setErr(null);
     try {
-      const s = await api<{ understood: string; plan: string[]; _demo?: boolean }>(
+      const r = await api<{ items: QGroup[]; _demo?: boolean }>(
         `/editorial-strategies/${item.strategyId}/adjust`,
-        { method: "POST", body: JSON.stringify({ mode: "summary" }) },
+        { method: "POST", body: JSON.stringify({ mode: "questions" }) },
       );
-      setSummary(s);
-    } catch (e) { setErr(e instanceof Error ? e.message : "Erro ao resumir"); }
+      setQuestions(r.items ?? []);
+      setQDemo(Boolean(r._demo));
+    } catch (e) { setErr(e instanceof Error ? e.message : "Erro ao gerar perguntas"); }
     finally { setBusy(null); }
   }
 
@@ -162,9 +167,23 @@ function EditorialCard({ item }: { item: EditorialAdj }) {
     if (kind === "manual" && !guidance.trim()) { setErr("Descreva o que ajustar."); return; }
     setBusy("apply"); setErr(null);
     try {
+      // No auto, junta as respostas que a equipe anotou ao perguntar ao cliente.
+      const collected =
+        kind === "auto"
+          ? (questions ?? []).flatMap((g, gi) =>
+              g.questions.map((q, qi) => ({ question: q, answer: (answers[`${gi}-${qi}`] ?? "").trim() })),
+            ).filter((a) => a.answer)
+          : undefined;
       const r = await api<{ version: number; demo: boolean }>(
         `/editorial-strategies/${item.strategyId}/adjust`,
-        { method: "POST", body: JSON.stringify({ mode: kind, guidance: kind === "manual" ? guidance : undefined }) },
+        {
+          method: "POST",
+          body: JSON.stringify({
+            mode: kind,
+            guidance: kind === "manual" ? guidance : undefined,
+            answers: collected && collected.length ? collected : undefined,
+          }),
+        },
       );
       // Mantém o card com o estado de sucesso (não recarrega agora, senão a nova
       // versão faz este item sumir e o operador perde o link "revisar/enviar").
@@ -172,6 +191,8 @@ function EditorialCard({ item }: { item: EditorialAdj }) {
     } catch (e) { setErr(e instanceof Error ? e.message : "Erro ao gerar nova versão"); }
     finally { setBusy(null); }
   }
+
+  const answeredCount = Object.values(answers).filter((v) => v.trim()).length;
 
   return (
     <div className="space-y-3 rounded-xl border border-border bg-surface p-4">
@@ -218,36 +239,50 @@ function EditorialCard({ item }: { item: EditorialAdj }) {
 
           {mode === "auto" ? (
             <div className="space-y-2">
-              {!summary ? (
-                <button onClick={runSummary} disabled={busy !== null}
-                  className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-elevated disabled:opacity-50">
-                  {busy === "summary" ? "Resumindo…" : "Resumir com IA (o que entendi + o que faria)"}
-                </button>
+              {!questions ? (
+                <>
+                  <button onClick={runQuestions} disabled={busy !== null}
+                    className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-elevated disabled:opacity-50">
+                    {busy === "questions" ? "Analisando os ajustes…" : "Gerar perguntas de esclarecimento (IA)"}
+                  </button>
+                  <p className="text-[11px] text-muted">A IA lê todos os ajustes juntos, identifica cada um e monta perguntas específicas para a equipe fazer ao cliente.</p>
+                </>
               ) : (
-                <div className="space-y-2 rounded-lg border border-border bg-elevated/50 p-3">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">O que a IA entendeu</p>
-                    <p className="mt-0.5 text-sm">{summary.understood}</p>
+                <div className="space-y-3 rounded-lg border border-border bg-elevated/50 p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Perguntas para o cliente — anote as respostas</p>
+                    <button onClick={runQuestions} disabled={busy !== null}
+                      className="rounded-md border border-border px-2 py-0.5 text-[11px] hover:bg-surface disabled:opacity-50">
+                      Gerar de novo
+                    </button>
                   </div>
-                  {summary.plan.length > 0 && (
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">O que a IA faria</p>
-                      <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-sm">
-                        {summary.plan.map((p, i) => <li key={i}>{p}</li>)}
-                      </ul>
+                  {qDemo && <p className="text-xs text-warn">Perguntas em modo demo (sem chave de IA).</p>}
+                  {questions.length === 0 && <p className="text-xs text-muted">A IA não encontrou pontos a esclarecer.</p>}
+                  {questions.map((g, gi) => (
+                    <div key={gi} className="space-y-1.5 rounded-md border border-border bg-surface p-2.5">
+                      <p className="text-xs font-semibold">{g.topic}</p>
+                      {g.questions.map((q, qi) => (
+                        <div key={qi} className="space-y-1">
+                          <p className="text-xs text-muted">{q}</p>
+                          <textarea
+                            value={answers[`${gi}-${qi}`] ?? ""}
+                            onChange={(e) => setAnswers((a) => ({ ...a, [`${gi}-${qi}`]: e.target.value }))}
+                            rows={2}
+                            placeholder="Resposta do cliente…"
+                            className="w-full rounded-md border border-border bg-elevated px-2 py-1.5 text-xs outline-none focus:border-brand"
+                          />
+                        </div>
+                      ))}
                     </div>
-                  )}
-                  {summary._demo && <p className="text-xs text-warn">Resumo em modo demo (sem chave de IA).</p>}
-                  <div className="flex flex-wrap gap-2 pt-1">
+                  ))}
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
                     <button onClick={() => apply("auto")} disabled={busy !== null}
                       className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-strong disabled:opacity-50 dark:text-[#00390d]">
-                      {busy === "apply" ? "Reajustando…" : "Acionar IA para reajustar →"}
+                      {busy === "apply" ? "Reajustando…" : "Reajustar com as respostas →"}
                     </button>
-                    <button onClick={runSummary} disabled={busy !== null}
-                      className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-surface disabled:opacity-50">
-                      Resumir de novo
-                    </button>
+                    <span className="text-[11px] text-muted">{answeredCount} resposta(s) preenchida(s)</span>
                   </div>
+                  <p className="text-[11px] text-muted">Pode reajustar mesmo sem responder tudo — a IA usa o que houver + os pedidos do cliente.</p>
                 </div>
               )}
             </div>
