@@ -19,7 +19,7 @@ const uuid = z.string().uuid();
 const createInput = z.object({
   // Categoria livre p/ organizar (empresa, mercado, atualidade, diretriz…).
   kind: z.string().min(1).max(60).default("empresa"),
-  content: z.string().min(1).max(6000),
+  content: z.string().min(1).max(10000),
 });
 
 async function ownedClient(org: string, id: string) {
