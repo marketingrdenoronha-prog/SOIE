@@ -50,22 +50,78 @@ function dt(iso: string | null): string {
  * Editorial (com ajuste manual/IA) e Materiais (o Designer refaz na esteira).
  * Reutilizado na página /adjustments e embutido dentro da aba Produção.
  */
+/** Intervalo do polling (ms). O board se atualiza sozinho, sem recarregar a
+ * página — dá a sensação de tempo real dentro do que o serverless permite. */
+const POLL_MS = 12000;
+
 export function AdjustmentsBoard() {
   const [data, setData] = useState<Data | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  async function load() {
-    setErr(null);
-    try { setData(await api<Data>("/adjustments")); }
-    catch (e) { setErr(e instanceof Error ? e.message : "Erro"); }
+  async function load(opts?: { silent?: boolean }) {
+    if (!opts?.silent) setErr(null);
+    setRefreshing(true);
+    try {
+      const d = await api<Data>("/adjustments");
+      setData(d);
+      setUpdatedAt(new Date());
+      setErr(null);
+    } catch (e) {
+      // Refresh silencioso não derruba a tela: mantém os dados atuais e só
+      // marca erro em cargas explícitas.
+      if (!opts?.silent) setErr(e instanceof Error ? e.message : "Erro");
+    } finally {
+      setRefreshing(false);
+    }
   }
-  useEffect(() => { load(); }, []);
 
-  if (err) return <p className="text-sm text-crit">{err}</p>;
+  useEffect(() => {
+    load();
+    // Auto-atualização em tempo real (polling) + refetch imediato ao voltar o
+    // foco/aba — nenhum ajuste "demora a aparecer" nem exige recarregar.
+    const id = setInterval(() => { if (typeof document !== "undefined" && !document.hidden) load({ silent: true }); }, POLL_MS);
+    const onFocus = () => load({ silent: true });
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (err && data === null) return <p className="text-sm text-crit">{err}</p>;
   if (data === null) return <p className="text-sm text-muted">Carregando alterações…</p>;
 
+  const pending = data.editorial.length + data.materials.length;
+
   return (
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-xs text-muted">
+          <span className="relative flex h-2 w-2" title="Atualização em tempo real">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ok/70" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-ok" />
+          </span>
+          <span>Ao vivo{updatedAt ? ` · atualizado ${updatedAt.toLocaleTimeString("pt-BR")}` : ""}</span>
+          {pending > 0 && (
+            <span className="rounded-full bg-warn/15 px-2 py-0.5 text-[11px] font-medium text-warn">{pending} pendente{pending > 1 ? "s" : ""}</span>
+          )}
+          {err && <span className="text-crit">· falha ao atualizar</span>}
+        </div>
+        <button
+          onClick={() => load()}
+          disabled={refreshing}
+          className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-elevated disabled:opacity-50"
+        >
+          {refreshing ? "Atualizando…" : "Atualizar"}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
       <section className="space-y-3">
         <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted">
           Alteração da Linha Editorial
@@ -85,6 +141,7 @@ export function AdjustmentsBoard() {
           ? <Empty label="Nenhuma alteração de material pendente." />
           : data.materials.map((m) => <MaterialCard key={m.deliverableId} item={m} onChanged={load} />)}
       </section>
+      </div>
     </div>
   );
 }
