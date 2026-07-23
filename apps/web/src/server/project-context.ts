@@ -293,7 +293,7 @@ export async function assembleProjectContext(
   if (otherMemories.length > 0) {
     context.memory = {
       note:
-        "Memória curada pelo usuário. Trate como REGRAS OBRIGATÓRIAS: respeite estas diretrizes de linguagem, tom e linha editorial em tudo que gerar.",
+        "BASE DE CONHECIMENTO do cliente (empresa, mercado, posicionamento, diretrizes, atualidades, observações) — é a FONTE PRIMÁRIA DA VERDADE. NÃO é consulta opcional: interprete, cruze e aplique estas informações como contexto principal de TODA a geração. Em conflito com o conhecimento geral, a Base prevalece. Trate como REGRAS OBRIGATÓRIAS de linguagem, tom, temas, exemplos e posicionamento.",
       entries: otherMemories.map((m) => ({ kind: m.kind, content: m.content, scope: m.scope })),
     };
   }
