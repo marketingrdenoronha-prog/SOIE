@@ -121,25 +121,30 @@ function shortCta(i: number): string {
   return SHORT_CTAS[i % SHORT_CTAS.length]!;
 }
 
-/** Carrossel: NO MÁXIMO 4 telas (capa + 2 de conteúdo + CTA), cada uma com
- * copy DESENVOLVIDA (2 a 4 frases) — nunca frase solta e vaga. */
+/** Carrossel: NO MÁXIMO 4 telas, cada uma como cena de um ROTEIRO conectado —
+ * Curiosidade → Contexto → Consequência → Solução. Cada tela desenvolve o
+ * raciocínio (3 a 6 frases) e puxa a próxima; nunca frase de efeito solta. */
 function carouselCopy(i: number, ctx: GenerationContext): StructuredCopy {
   const slides = [
     {
-      title: "Capa",
-      text: `${shortHeadline(i)}. Você posta, aparece e se dedica — mas o retorno não vem na mesma proporção do esforço. Quase sempre o problema não é volume de conteúdo, é estrutura. Deslize que a gente mostra o que realmente muda o jogo.`,
+      // Tela 1 — curiosidade/tensão: apresenta a situação e faz deslizar.
+      title: "Curiosidade",
+      text: `${shortHeadline(i)}. Você posta com frequência, aparece, capricha no visual — e mesmo assim sente que o retorno não acompanha o esforço. Se isso soa familiar, o problema quase nunca é falta de trabalho: é uma peça invisível que trava tudo por trás. Deslize que eu vou te mostrar exatamente onde está o gargalo.`,
     },
     {
-      title: "Clareza",
-      text: "Se o seu público não entende em segundos o que você resolve, ele passa reto. Clareza é falar da dor e do desejo do cliente antes de falar de você — quando a pessoa se enxerga na mensagem, ela para o dedo e presta atenção de verdade.",
+      // Tela 2 — aprofunda o problema: explica POR QUE acontece.
+      title: "Contexto",
+      text: "O que trava o resultado é a falta de estrutura na comunicação. Sem clareza, o público não entende em segundos o que você resolve e passa reto — a mensagem fala de você, não da dor dele. E o algoritmo só entrega para mais gente o conteúdo que já prendeu quem viu; se ninguém para, ninguém alcança. Ou seja: não é volume, é a base que sustenta cada post.",
     },
     {
-      title: "Prova",
-      text: "Promessa sem prova é só mais um anúncio em que ninguém acredita. Case real, print de resultado, depoimento e bastidor constroem a confiança que a venda precisa. Não peça pra acreditar em você — mostre o processo e o resultado acontecendo.",
+      // Tela 3 — consequências/impactos reais do problema.
+      title: "Consequência",
+      text: "Na prática, isso vira um ciclo caro: você produz mais para compensar, gasta tempo e energia, e ainda assim o perfil não cresce nem gera conversa. Cada semana sem estrutura é audiência que não volta, autoridade que não se constrói e venda que não acontece. O pior é a sensação de estar correndo no lugar — muito esforço, pouco resultado — que faz muita gente desistir bem antes de o conteúdo dar retorno.",
     },
     {
-      title: "CTA",
-      text: `Se você se reconheceu, o próximo passo é ajustar a estrutura antes de produzir mais conteúdo no vácuo. Estrutura vira resultado previsível — e dá pra começar hoje com a ${ctx.brand}. ${shortCta(i)}`,
+      // Tela 4 — solução + CTA que fecha o raciocínio.
+      title: "Solução",
+      text: `A saída não é postar mais, é postar com método: clareza para o público se enxergar, prova real para sustentar a promessa e consistência para manter o ritmo. Com essa base, o mesmo esforço passa a virar resultado previsível. Se você quer ajustar essa estrutura antes de produzir o próximo conteúdo, ${shortCta(i).toLowerCase()} — a ${ctx.brand} te mostra por onde começar.`,
     },
   ];
   return { format: "carrossel", slides };
