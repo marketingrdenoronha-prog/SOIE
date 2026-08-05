@@ -789,6 +789,13 @@ model Theme {
   hook               String?
   cta                String?
   productionNotes    String?
+  // V3 — AJUSTES MANUAIS por conteúdo (pré-aprovação): o operador escreve
+  // instruções específicas para ESTE tema e a IA reescreve APENAS este tema,
+  // sem tocar nos demais. `contentStatus` é o controle de revisão por peça
+  // (aprovado | revisar | reescrever | excluir); `adjustmentNote` guarda as
+  // instruções manuais correntes.
+  contentStatus      String?
+  adjustmentNote     String?
   // FK inversa: quando a produção automática cria um Deliverable para este
   // tema, guarda o id para evitar duplicação e permitir navegação. @unique
   // porque cada tema gera no máximo 1 peça (a produção reusa se re-clicada).

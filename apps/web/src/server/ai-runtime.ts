@@ -527,3 +527,137 @@ export async function generateAdjustmentQuestions(
     };
   }
 }
+
+export interface ThemeRewriteResult {
+  title?: string;
+  format?: string;
+  channel?: string;
+  strategicObjective?: string;
+  hook?: string;
+  cta?: string;
+  productionNotes?: string;
+  copy?: unknown;
+  _demo?: boolean;
+}
+
+/**
+ * AJUSTE MANUAL de UM ÚNICO conteúdo da linha editorial. Reescreve SÓ este tema
+ * a partir das instruções manuais do operador, respeitando a ordem de
+ * prioridade (1. ajuste manual → 2. briefing do cliente → 3. base de
+ * conhecimento → 4. estratégia da linha → 5. regras gerais). Devolve o tema
+ * completo já ajustado; o chamador grava apenas neste tema (nenhum outro muda).
+ */
+export async function rewriteEditorialTheme(
+  input: {
+    instructions: string;
+    theme: {
+      title?: unknown; format?: unknown; channel?: unknown;
+      strategicObjective?: unknown; hook?: unknown; cta?: unknown;
+      productionNotes?: unknown; copy?: unknown;
+    };
+    clientName?: string;
+    niche?: string;
+  },
+  context?: Record<string, unknown>,
+  opts?: AIRunOpts,
+): Promise<ThemeRewriteResult> {
+  if (!HAS_AI_KEY) {
+    // Sem IA: mantém o conteúdo e registra as instruções nas observações, para
+    // o ajuste ficar visível até haver uma chave de IA configurada.
+    const notes = [String(input.theme.productionNotes ?? "").trim(), `[AJUSTE MANUAL PENDENTE — modo demo] ${input.instructions.trim()}`]
+      .filter(Boolean)
+      .join("\n\n");
+    return {
+      title: input.theme.title ? String(input.theme.title) : undefined,
+      format: input.theme.format ? String(input.theme.format) : undefined,
+      channel: input.theme.channel ? String(input.theme.channel) : undefined,
+      strategicObjective: input.theme.strategicObjective ? String(input.theme.strategicObjective) : undefined,
+      hook: input.theme.hook ? String(input.theme.hook) : undefined,
+      cta: input.theme.cta ? String(input.theme.cta) : undefined,
+      productionNotes: notes,
+      copy: input.theme.copy,
+      _demo: true,
+    };
+  }
+
+  const system = [
+    "Você reescreve UM ÚNICO conteúdo de uma linha editorial a partir das INSTRUÇÕES DE AJUSTE MANUAL do operador.",
+    "REGRA DE OURO: altere EXCLUSIVAMENTE o que as instruções pedirem; preserve todo o resto do conteúdo (o que não foi citado permanece igual). Não invente mudanças fora do pedido.",
+    "ORDEM DE PRIORIDADE (do maior para o menor): 1) as INSTRUÇÕES DE AJUSTE MANUAL; 2) o briefing do cliente (`context.clientProfile`); 3) a Base de Conhecimento (`context.memory`); 4) a estratégia da linha (posicionamento/pilares); 5) regras gerais. Em conflito, a de prioridade MAIOR vence — o ajuste manual sempre prevalece.",
+    "Fundamente o conteúdo na Base e no briefing: use dores, mercado, persona e voz reais do cliente; nada genérico que sirva para outra empresa.",
+    "Devolva o TEMA COMPLETO já ajustado, com as chaves: \"title\", \"format\" (Vídeo|Motion|Carrossel|Estático), \"channel\", \"strategicObjective\", \"hook\", \"cta\", \"productionNotes\", \"copy\".",
+    "REGRAS DE `copy` por formato (mantenha o formato atual, a menos que as instruções mandem trocar — nesse caso gere a copy no NOVO formato):",
+    "• Vídeo/Motion: copy = { \"format\":\"video\"|\"motion\", \"estimatedDuration\", \"sections\":[{label,text}] } com as 5 partes (Gancho, Conexão, Desenvolvimento, Virada, CTA) em narração completa (mín. ~130 palavras).",
+    "• Carrossel: copy = { \"format\":\"carrossel\", \"slides\":[{title,text}] } com NO MÁXIMO 4 telas; cada `text` desenvolvido (2–4 frases). Capa + até 2 telas + CTA.",
+    "• Estático: copy = { \"format\":\"estatico\", \"static\":{ headline, subheadline, body, caption, cta, designNotes } }. Arte enxuta; `caption` (legenda) desenvolvida e estratégica (4–7 frases).",
+    "Responda EXCLUSIVAMENTE com JSON válido do tema, em pt-BR, sem markdown.",
+  ].join("\n");
+
+  const user = [
+    input.clientName ? `Cliente: ${input.clientName}` : "",
+    input.niche ? `Mercado/nicho: ${input.niche}` : "",
+    "",
+    "CONTEÚDO ATUAL (JSON):",
+    JSON.stringify(input.theme),
+    "",
+    "INSTRUÇÕES DE AJUSTE MANUAL (prioridade máxima — aplique apenas isto):",
+    input.instructions.trim(),
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const startedAt = Date.now();
+  try {
+    const res = await gateway.complete(
+      {
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: `${user}\n\nCONTEXTO (briefing, base, persona, voz): ${JSON.stringify(context ?? {})}` },
+        ],
+        maxTokens: 4000,
+        responseFormat: "json",
+      },
+      MODEL_POLICY,
+    );
+    if (opts?.organizationId) {
+      await logExecution(opts.organizationId, {
+        provider: res.provider,
+        model: res.model,
+        inputTokens: res.usage.inputTokens,
+        outputTokens: res.usage.outputTokens,
+        latencyMs: Date.now() - startedAt,
+        requestRef: "editorial-theme-rewrite",
+      });
+    }
+    const parsed = extractJson(res.text) as Record<string, unknown> | null;
+    if (!parsed) throw new Error("no json");
+    const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+    return {
+      title: str(parsed.title) ?? (input.theme.title ? String(input.theme.title) : undefined),
+      format: str(parsed.format) ?? (input.theme.format ? String(input.theme.format) : undefined),
+      channel: str(parsed.channel) ?? (input.theme.channel ? String(input.theme.channel) : undefined),
+      strategicObjective: str(parsed.strategicObjective) ?? (input.theme.strategicObjective ? String(input.theme.strategicObjective) : undefined),
+      hook: str(parsed.hook) ?? (input.theme.hook ? String(input.theme.hook) : undefined),
+      cta: str(parsed.cta) ?? (input.theme.cta ? String(input.theme.cta) : undefined),
+      productionNotes: str(parsed.productionNotes) ?? (input.theme.productionNotes ? String(input.theme.productionNotes) : undefined),
+      copy: parsed.copy ?? input.theme.copy,
+    };
+  } catch {
+    // Falha de IA: não perde o pedido — devolve o tema atual com a instrução
+    // anotada para reprocessar depois.
+    const notes = [String(input.theme.productionNotes ?? "").trim(), `[AJUSTE MANUAL NÃO APLICADO — tente novamente] ${input.instructions.trim()}`]
+      .filter(Boolean)
+      .join("\n\n");
+    return {
+      title: input.theme.title ? String(input.theme.title) : undefined,
+      format: input.theme.format ? String(input.theme.format) : undefined,
+      channel: input.theme.channel ? String(input.theme.channel) : undefined,
+      strategicObjective: input.theme.strategicObjective ? String(input.theme.strategicObjective) : undefined,
+      hook: input.theme.hook ? String(input.theme.hook) : undefined,
+      cta: input.theme.cta ? String(input.theme.cta) : undefined,
+      productionNotes: notes,
+      copy: input.theme.copy,
+      _demo: true,
+    };
+  }
+}

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { arr, text } from "@/lib/render";
-import { EditorialDoc } from "@/components/editorial-doc";
+import { EditorialThemesEditor } from "@/components/editorial-themes-editor";
 import { EDITORIAL_FORMATS, EMPTY_FORMAT_COUNTS, type FormatCounts } from "@/lib/editorial-format";
 
 type Strategy = any;
@@ -176,6 +176,7 @@ export function EditorialTab({ clientId }: { clientId: string }) {
               sendBusy={sendBusy === s.id}
               onSubmit={() => submit(s.id)}
               onSendToStock={(method) => sendToStock(s.id, method)}
+              onReload={load}
             />
           ))}
         </div>
@@ -184,8 +185,8 @@ export function EditorialTab({ clientId }: { clientId: string }) {
   );
 }
 
-function StrategyCard({ s, submitBusy, sendBusy, onSubmit, onSendToStock }: {
-  s: any; submitBusy: boolean; sendBusy: boolean; onSubmit: () => void; onSendToStock: (method: "message" | "document") => void;
+function StrategyCard({ s, submitBusy, sendBusy, onSubmit, onSendToStock, onReload }: {
+  s: any; submitBusy: boolean; sendBusy: boolean; onSubmit: () => void; onSendToStock: (method: "message" | "document") => void; onReload: () => Promise<void> | void;
 }) {
   const [copied, setCopied] = useState(false);
   const openLink = s.reviewLinks?.find((l: any) => l.status === "open") ?? s.reviewLinks?.[0];
@@ -268,7 +269,12 @@ function StrategyCard({ s, submitBusy, sendBusy, onSubmit, onSendToStock }: {
         )}
         <div>
           <p className="label-caps mb-2 text-muted">Conteúdos propostos</p>
-          <EditorialDoc lines={s.editorialLines} />
+          <EditorialThemesEditor
+            strategyId={s.id}
+            lines={s.editorialLines}
+            editable={s.status !== "approved"}
+            onChanged={onReload}
+          />
         </div>
       </div>
     </article>
