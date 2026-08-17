@@ -1408,29 +1408,66 @@ model KnowledgeBase {
   @@map("knowledge_bases")
 }
 
+// FONTE de conhecimento (V3): documento, nota, artigo, notícia ou página. É a
+// evolução ativa da Base de Conhecimento — clientId/projectId denormalizados
+// para escopo/índices rápidos; type/status/url/metadados para ingestão e
+// recuperação. Cada fonte gera chunks (Embedding) usados no retrieval.
 model KnowledgeDocument {
   id              String   @id @default(uuid()) @db.Uuid
   organizationId  String   @db.Uuid
   knowledgeBaseId String   @db.Uuid
+  // Escopo denormalizado (a partir do KnowledgeBase.scope) para queries e
+  // índices diretos por cliente/projeto sem join.
+  clientId        String?  @db.Uuid
+  projectId       String?  @db.Uuid
   fileId          String?  @db.Uuid
   title           String
+  // manual | document | article | news | webpage
+  type            String   @default("document")
   source          String   @default("upload")
+  // pending | processing | ready | failed | disabled
   status          String   @default("pending")
+  url             String?
+  canonicalUrl    String?
+  domain          String?
+  author          String?
+  publishedAt     DateTime?
+  fetchedAt       DateTime?
+  // Texto normalizado completo da fonte (notas curtas / doc / artigo extraído).
+  content         String?
+  summary         String?
+  language        String?
+  tags            Json     @default("[]")
+  priority        Int      @default(0)
+  enabled         Boolean  @default(true)
+  // Hash do conteúdo normalizado — evita reprocessar conteúdo idêntico.
+  checksum        String?
   meta            Json     @default("{}")
   createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now()) @updatedAt
 
   knowledgeBase KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
   embeddings    Embedding[]
 
   @@index([organizationId])
   @@index([knowledgeBaseId])
+  @@index([clientId])
+  @@index([projectId])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
   @@map("knowledge_documents")
 }
 
+// CHUNK de uma fonte de conhecimento. `embedding` (pgvector) é preenchido
+// quando há chave de embeddings; o retrieval funciona mesmo sem ele via busca
+// lexical (coluna gerada `tsv` + índice GIN, criados na migração).
 model Embedding {
   id                  String                      @id @default(uuid()) @db.Uuid
   organizationId      String                      @db.Uuid
   knowledgeDocumentId String                      @db.Uuid
+  clientId            String?                     @db.Uuid
+  projectId           String?                     @db.Uuid
   chunkIndex          Int
   content             String
   embedding           Unsupported("vector(1536)")?
@@ -1441,6 +1478,7 @@ model Embedding {
 
   @@index([organizationId])
   @@index([knowledgeDocumentId])
+  @@index([clientId])
   @@map("embeddings")
 }
 

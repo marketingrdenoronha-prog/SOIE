@@ -661,3 +661,27 @@ export async function rewriteEditorialTheme(
     };
   }
 }
+
+/**
+ * Embedding best-effort para a Base de Conhecimento. Usa OpenAI
+ * (text-embedding-3-small = 1536 dims, casa com a coluna vector(1536)) quando a
+ * chave existe. SEM chave (ou em qualquer falha) devolve null — o retrieval cai
+ * para busca lexical, então o recurso nunca fica inutilizado.
+ */
+export async function embedText(text: string): Promise<number[] | null> {
+  if (!providerKeys.openai) return null;
+  const clean = text.trim().slice(0, 8000);
+  if (!clean) return null;
+  try {
+    const res = await gateway.embed({
+      provider: "openai",
+      model: "text-embedding-3-small",
+      input: [clean],
+      apiKey: providerKeys.openai,
+    });
+    const v = res.vectors?.[0];
+    return Array.isArray(v) && v.length === 1536 ? v : null;
+  } catch {
+    return null;
+  }
+}
