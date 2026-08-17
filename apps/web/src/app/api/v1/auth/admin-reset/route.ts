@@ -31,8 +31,10 @@ function safeEqual(a: string, b: string): boolean {
  */
 export async function POST(req: Request) {
   return handle(async () => {
-    // Aceita ADMIN_RESET_SECRET ou ADMIN_HARD_KEY (o que estiver definido).
-    const secretEnv = env.ADMIN_RESET_SECRET || env.ADMIN_HARD_KEY;
+    // Segredo do administrador. Ordem: env ADMIN_RESET_SECRET → env
+    // ADMIN_HARD_KEY → padrão embutido. Definir qualquer uma das envs na Vercel
+    // SOBRESCREVE o padrão (recomendado, para não deixar o segredo no código).
+    const secretEnv = env.ADMIN_RESET_SECRET || env.ADMIN_HARD_KEY || "beam360marco";
     // Mensagens explícitas para o operador saber exatamente o que corrigir.
     if (!secretEnv) {
       return fail("reset_not_configured", "Reset não configurado no servidor: defina a variável de ambiente ADMIN_HARD_KEY (ou ADMIN_RESET_SECRET) no projeto soie-web da Vercel e faça um novo deploy.", 503);
