@@ -9,6 +9,10 @@ export const dynamic = "force-dynamic";
 // Geração em lotes com top-up faz várias chamadas de IA — precisa de janela.
 export const maxDuration = 300;
 
+const themeField = z.string().max(300).optional();
+const durationField = z.number().int().positive().max(3600); // inteiro positivo; teto = guarda de segurança
+const slideField = z.number().int().min(2).max(8);
+
 const createInput = z
   .object({
     brief: z.string().max(4000).optional(),
@@ -23,39 +27,41 @@ const createInput = z
         estatico: z.number().int().min(0).max(50).optional(),
       })
       .optional(),
-    // Configuração INDIVIDUAL de telas por carrossel. slideCount inteiro 2–8.
-    carouselConfigs: z
-      .array(z.object({ index: z.number().int().min(0).max(49), slideCount: z.number().int().min(2).max(8) }))
-      .max(50)
+    // Config INDIVIDUAL por conteúdo, por formato (na ordem dos conteúdos).
+    contentConfigs: z
+      .object({
+        video: z.array(z.object({ theme: themeField, durationSeconds: durationField })).max(50).optional(),
+        motion: z.array(z.object({ theme: themeField, durationSeconds: durationField })).max(50).optional(),
+        carrossel: z.array(z.object({ theme: themeField, slideCount: slideField })).max(50).optional(),
+        estatico: z.array(z.object({ theme: themeField })).max(50).optional(),
+      })
       .optional(),
   })
-  // A API não confia na UI: a quantidade de configs precisa bater exatamente
-  // com a quantidade de carrosséis pedida.
+  // A API não confia na UI: a quantidade de configs de cada formato precisa
+  // bater exatamente com a quantidade pedida daquele formato.
   .superRefine((v, ctx) => {
-    const carrossel = v.formatCounts?.carrossel ?? 0;
-    const configs = v.carouselConfigs ?? [];
-    if (carrossel > 0 && configs.length > 0 && configs.length !== carrossel) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["carouselConfigs"], message: `Configure exatamente ${carrossel} carrossel(éis) (recebido ${configs.length}).` });
-    }
-    if (carrossel === 0 && configs.length > 0) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["carouselConfigs"], message: "Sem carrosséis, não deve haver configuração de telas." });
-    }
-    const seen = new Set<number>();
-    for (const c of configs) {
-      if (c.index >= Math.max(carrossel, configs.length)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["carouselConfigs"], message: `Índice de carrossel fora do intervalo: ${c.index}.` });
-      if (seen.has(c.index)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["carouselConfigs"], message: `Índice de carrossel duplicado: ${c.index}.` });
-      seen.add(c.index);
+    const counts = v.formatCounts ?? {};
+    for (const f of ["video", "motion", "carrossel", "estatico"] as const) {
+      const n = counts[f] ?? 0;
+      const list = v.contentConfigs?.[f];
+      if (list && list.length > 0 && list.length !== n) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["contentConfigs", f], message: `Configure exatamente ${n} item(ns) de ${f} (recebido ${list.length}).` });
+      }
     }
   });
 
-/** Converte carouselConfigs (index+slideCount) numa lista ordenada de telas. */
-function toCarouselSlides(configs: { index: number; slideCount: number }[] | undefined, carrossel: number): number[] | undefined {
-  if (!carrossel) return undefined;
-  const out = Array.from({ length: carrossel }, () => 5);
-  for (const c of configs ?? []) {
-    if (c.index >= 0 && c.index < carrossel) out[c.index] = Math.min(8, Math.max(2, Math.round(c.slideCount)));
-  }
-  return out;
+type ContentConfigsInput = z.infer<typeof createInput>["contentConfigs"];
+
+/** Normaliza a config recebida: tema vazio → undefined; duração/telas clampeadas. */
+function toContentConfigs(cc: ContentConfigsInput): import("@/lib/editorial-format").ContentConfigs | undefined {
+  if (!cc) return undefined;
+  const theme = (t?: string) => (t && t.trim() ? t.trim().slice(0, 300) : undefined);
+  return {
+    ...(cc.video ? { video: cc.video.map((it) => ({ theme: theme(it.theme), durationSeconds: Math.max(1, Math.round(it.durationSeconds)) })) } : {}),
+    ...(cc.motion ? { motion: cc.motion.map((it) => ({ theme: theme(it.theme), durationSeconds: Math.max(1, Math.round(it.durationSeconds)) })) } : {}),
+    ...(cc.carrossel ? { carrossel: cc.carrossel.map((it) => ({ theme: theme(it.theme), slideCount: Math.min(8, Math.max(2, Math.round(it.slideCount))) })) } : {}),
+    ...(cc.estatico ? { estatico: cc.estatico.map((it) => ({ theme: theme(it.theme) })) } : {}),
+  };
 }
 
 /** GET /clients/:id/editorial-strategies
@@ -99,7 +105,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       observations: input.observations,
       momento: input.momento,
       formatCounts: input.formatCounts,
-      carouselSlides: toCarouselSlides(input.carouselConfigs, input.formatCounts?.carrossel ?? 0),
+      contentConfigs: toContentConfigs(input.contentConfigs),
     });
     return ok(strategy, 201);
   });

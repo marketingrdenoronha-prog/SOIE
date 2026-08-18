@@ -552,6 +552,8 @@ export async function rewriteEditorialTheme(
     instructions: string;
     /** Se for carrossel, quantidade OBRIGATÓRIA de telas a manter (2–8). */
     slideCount?: number;
+    /** Se for vídeo/motion, duração (segundos) a manter no roteiro. */
+    durationSeconds?: number;
     theme: {
       title?: unknown; format?: unknown; channel?: unknown;
       strategicObjective?: unknown; hook?: unknown; cta?: unknown;
@@ -589,7 +591,7 @@ export async function rewriteEditorialTheme(
     "Fundamente o conteúdo na Base e no briefing: use dores, mercado, persona e voz reais do cliente; nada genérico que sirva para outra empresa.",
     "Devolva o TEMA COMPLETO já ajustado, com as chaves: \"title\", \"format\" (Vídeo|Motion|Carrossel|Estático), \"channel\", \"strategicObjective\", \"hook\", \"cta\", \"productionNotes\", \"copy\".",
     "REGRAS DE `copy` por formato (mantenha o formato atual, a menos que as instruções mandem trocar — nesse caso gere a copy no NOVO formato):",
-    "• Vídeo/Motion: copy = { \"format\":\"video\"|\"motion\", \"estimatedDuration\", \"sections\":[{label,text}] } com as 5 partes (Gancho, Conexão, Desenvolvimento, Virada, CTA) em narração completa (mín. ~130 palavras).",
+    "• Vídeo/Motion: copy = { \"format\":\"video\"|\"motion\", \"durationSeconds\": N, \"estimatedDuration\", \"sections\":[{label,text}] }. Se houver DURAÇÃO OBRIGATÓRIA, ajuste o tamanho do roteiro a ela (~2–2,5 palavras/s): curto (≤20s) = 2–3 partes enxutas; médio (~30–45s) = 4 partes; longo (60s+) = as 5 partes desenvolvidas. Não force ~130 palavras se a duração pedida for menor.",
     "• Carrossel: copy = { \"format\":\"carrossel\", \"slideCount\": N, \"slides\":[{title,text}] } com EXATAMENTE N telas (a quantidade indicada abaixo). NÃO mude a quantidade de telas, a menos que as instruções manuais peçam explicitamente. É um ROTEIRO conectado (não frases soltas): abertura (gancho/tensão) → desenvolvimento(s) (por que acontece, consequências, prova) → fechamento (solução + CTA), distribuído nas N telas. Cada `text` desenvolvido (3–6 frases, ~45–90 palavras) com contexto, explicação, consequência e ponte para a próxima tela; cada tela entrega algo novo. Proibido frase de efeito solta e proibido tela vazia. `slides.length` DEVE ser igual a `slideCount`.",
     "• Estático: copy = { \"format\":\"estatico\", \"static\":{ headline, subheadline, body, caption, cta, designNotes } }. Arte enxuta; `caption` (legenda) desenvolvida e estratégica (4–7 frases).",
     "Responda EXCLUSIVAMENTE com JSON válido do tema, em pt-BR, sem markdown.",
@@ -599,6 +601,7 @@ export async function rewriteEditorialTheme(
     input.clientName ? `Cliente: ${input.clientName}` : "",
     input.niche ? `Mercado/nicho: ${input.niche}` : "",
     input.slideCount ? `QUANTIDADE OBRIGATÓRIA DE TELAS (carrossel): ${input.slideCount} — o array slides deve ter exatamente ${input.slideCount} itens e slideCount=${input.slideCount}.` : "",
+    input.durationSeconds ? `DURAÇÃO OBRIGATÓRIA (vídeo/motion): ${input.durationSeconds} segundos — ajuste o tamanho do roteiro à duração (~2–2,5 palavras/s) e defina durationSeconds=${input.durationSeconds}.` : "",
     "",
     "CONTEÚDO ATUAL (JSON):",
     JSON.stringify(input.theme),

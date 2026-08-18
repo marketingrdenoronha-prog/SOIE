@@ -7,13 +7,88 @@ import { EditorialThemesEditor } from "@/components/editorial-themes-editor";
 import {
   EDITORIAL_FORMATS,
   EMPTY_FORMAT_COUNTS,
-  reconcileCarouselSlides,
+  reconcileContentConfigs,
+  formatLabel,
   CAROUSEL_MIN_SLIDES,
   CAROUSEL_MAX_SLIDES,
   type FormatCounts,
+  type FormatKey,
+  type ContentItemConfig,
 } from "@/lib/editorial-format";
 
 type Strategy = any;
+
+/** Monta o payload de contentConfigs enviado à API: só formatos com
+ * quantidade > 0, cada item com os campos do seu formato. */
+function buildContentConfigsPayload(counts: FormatCounts, configs: Record<FormatKey, ContentItemConfig[]>) {
+  const theme = (t?: string) => (t && t.trim() ? t.trim() : undefined);
+  const out: Record<string, unknown> = {};
+  if (counts.video > 0) out.video = configs.video.slice(0, counts.video).map((it) => ({ theme: theme(it.theme), durationSeconds: it.durationSeconds ?? 30 }));
+  if (counts.motion > 0) out.motion = configs.motion.slice(0, counts.motion).map((it) => ({ theme: theme(it.theme), durationSeconds: it.durationSeconds ?? 15 }));
+  if (counts.carrossel > 0) out.carrossel = configs.carrossel.slice(0, counts.carrossel).map((it) => ({ theme: theme(it.theme), slideCount: it.slideCount ?? 5 }));
+  if (counts.estatico > 0) out.estatico = configs.estatico.slice(0, counts.estatico).map((it) => ({ theme: theme(it.theme) }));
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+const FORMAT_PLURAL: Record<FormatKey, string> = { video: "Vídeos", motion: "Motions", carrossel: "Carrosséis", estatico: "Estáticos" };
+
+/** Seção de configuração individual de um formato (referência de UX: o antigo
+ * "Telas por carrossel", generalizado). Tema opcional em todos; duração em
+ * vídeo/motion; telas em carrossel. */
+function FormatConfigSection({ format, items, onChange }: {
+  format: FormatKey; items: ContentItemConfig[]; onChange: (format: FormatKey, i: number, patch: Partial<ContentItemConfig>) => void;
+}) {
+  const singular = formatLabel(format);
+  const isDur = format === "video" || format === "motion";
+  const isCar = format === "carrossel";
+  return (
+    <div className="mt-3 rounded-lg border border-border bg-surface p-3">
+      <p className="label-caps mb-2 text-muted">Configuração dos {FORMAT_PLURAL[format]}</p>
+      <div className="space-y-2">
+        {items.map((it, i) => (
+          <div key={i} className="rounded-md border border-border bg-elevated p-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-sm font-medium">{singular} {i + 1}</span>
+              {isDur && (
+                <label className="flex items-center gap-2">
+                  <span className="text-xs text-muted">Duração</span>
+                  <input
+                    type="number" min={1}
+                    value={it.durationSeconds ?? (format === "motion" ? 15 : 30)}
+                    onChange={(e) => onChange(format, i, { durationSeconds: Math.max(1, Math.round(Number(e.target.value) || 0)) })}
+                    className="w-20 rounded-md border border-border bg-surface px-2 py-1.5 text-sm outline-none focus:border-brand"
+                  />
+                  <span className="text-xs text-muted">seg</span>
+                </label>
+              )}
+              {isCar && (
+                <label className="flex items-center gap-2">
+                  <span className="text-xs text-muted">Telas</span>
+                  <select
+                    value={it.slideCount ?? 5}
+                    onChange={(e) => onChange(format, i, { slideCount: Number(e.target.value) })}
+                    className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-brand"
+                  >
+                    {Array.from({ length: CAROUSEL_MAX_SLIDES - CAROUSEL_MIN_SLIDES + 1 }, (_, k) => CAROUSEL_MIN_SLIDES + k).map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
+            <input
+              type="text"
+              value={it.theme ?? ""}
+              onChange={(e) => onChange(format, i, { theme: e.target.value })}
+              placeholder="Tema (opcional) — ex.: Como escolher o produto ideal para… (deixe em branco para a IA definir)"
+              className="mt-2 w-full rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-brand"
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function EditorialTab({ clientId }: { clientId: string }) {
   const [items, setItems] = useState<Strategy[] | null>(null);
@@ -22,18 +97,22 @@ export function EditorialTab({ clientId }: { clientId: string }) {
   const [sendBusy, setSendBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [counts, setCounts] = useState<FormatCounts>({ ...EMPTY_FORMAT_COUNTS });
-  // Quantidade INDIVIDUAL de telas por carrossel (ordem = Carrossel 1..N).
-  const [carouselSlides, setCarouselSlides] = useState<number[]>([]);
+  // Config INDIVIDUAL por conteúdo, por formato (tema + duração/telas).
+  const [configs, setConfigs] = useState<Record<FormatKey, ContentItemConfig[]>>({ video: [], motion: [], carrossel: [], estatico: [] });
   const [objective, setObjective] = useState("");
   const [observations, setObservations] = useState("");
   const [momento, setMomento] = useState("");
   const total = counts.video + counts.motion + counts.carrossel + counts.estatico;
 
-  // Reage à quantidade de carrosséis: preserva as configs existentes, novas =
-  // padrão (5), remove excedentes — nunca há mais configs que carrosséis.
+  // Reage às quantidades: preserva o que já foi digitado, cria novos com o
+  // padrão e remove excedentes — nunca há mais configs que conteúdos.
   useEffect(() => {
-    setCarouselSlides((prev) => reconcileCarouselSlides(prev, counts.carrossel));
-  }, [counts.carrossel]);
+    setConfigs((prev) => reconcileContentConfigs(prev, counts));
+  }, [counts.video, counts.motion, counts.carrossel, counts.estatico]);
+
+  function setItem(format: FormatKey, i: number, patch: Partial<ContentItemConfig>) {
+    setConfigs((prev) => ({ ...prev, [format]: prev[format].map((it, idx) => (idx === i ? { ...it, ...patch } : it)) }));
+  }
 
   async function load() {
     setErr(null);
@@ -52,7 +131,7 @@ export function EditorialTab({ clientId }: { clientId: string }) {
         method: "POST",
         body: JSON.stringify({
           formatCounts: counts,
-          carouselConfigs: counts.carrossel > 0 ? carouselSlides.map((slideCount, index) => ({ index, slideCount })) : undefined,
+          contentConfigs: buildContentConfigsPayload(counts, configs),
           objective: objective || undefined,
           observations: observations || undefined,
           momento: momento || undefined,
@@ -135,34 +214,9 @@ export function EditorialTab({ clientId }: { clientId: string }) {
           <p className="mt-1 text-[11px] text-muted">Total: {total} conteúdo(s){total === 0 ? " — deixe zerado para uma distribuição sugerida." : ""}</p>
         </div>
 
-        {counts.carrossel > 0 && (
-          <div className="mt-3 rounded-lg border border-border bg-surface p-3">
-            <p className="label-caps mb-2 text-muted">Telas por carrossel</p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {carouselSlides.map((slides, i) => (
-                <div key={i} className="flex items-center justify-between gap-3 rounded-md border border-border bg-elevated px-3 py-2">
-                  <span className="text-sm font-medium">Carrossel {i + 1}</span>
-                  <label className="flex items-center gap-2">
-                    <span className="text-xs text-muted">Telas</span>
-                    <select
-                      value={slides}
-                      onChange={(e) => {
-                        const v = Number(e.target.value);
-                        setCarouselSlides((prev) => prev.map((s, idx) => (idx === i ? v : s)));
-                      }}
-                      className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-brand"
-                    >
-                      {Array.from({ length: CAROUSEL_MAX_SLIDES - CAROUSEL_MIN_SLIDES + 1 }, (_, k) => CAROUSEL_MIN_SLIDES + k).map((n) => (
-                        <option key={n} value={n}>{n}</option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-              ))}
-            </div>
-            <p className="mt-2 text-[11px] text-muted">Cada carrossel terá exatamente a quantidade de telas escolhida (mín. {CAROUSEL_MIN_SLIDES}, máx. {CAROUSEL_MAX_SLIDES}). A IA respeita esses números.</p>
-          </div>
-        )}
+        {EDITORIAL_FORMATS.filter((f) => counts[f.key] > 0).map((f) => (
+          <FormatConfigSection key={f.key} format={f.key} items={configs[f.key].slice(0, counts[f.key])} onChange={setItem} />
+        ))}
 
         <label className="mt-3 block">
           <span className="text-xs font-medium text-muted">Objetivo da linha editorial (opcional)</span>

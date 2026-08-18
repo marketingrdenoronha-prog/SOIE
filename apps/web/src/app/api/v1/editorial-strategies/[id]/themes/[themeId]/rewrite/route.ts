@@ -5,7 +5,7 @@ import { ok, handle, Errors } from "@/server/http";
 import { assembleProjectContext } from "@/server/project-context";
 import { rewriteEditorialTheme } from "@/server/ai-runtime";
 import { enforceCarouselCopy } from "@/server/editorial-content";
-import { effectiveSlideCount, type StructuredCopy } from "@/lib/editorial-format";
+import { effectiveSlideCount, formatDuration, type StructuredCopy } from "@/lib/editorial-format";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,14 +54,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     const context = await assembleProjectContext(org, strategy.projectId);
 
-    // Preserva a quantidade de telas do carrossel (o usuário não pediu para
-    // mudá-la); só muda se as instruções manuais pedirem explicitamente.
-    const currentSlideCount = effectiveSlideCount(theme.copy as StructuredCopy | null);
+    // Preserva a estrutura escolhida (telas do carrossel, duração do vídeo/
+    // motion) — só muda se as instruções manuais pedirem explicitamente.
+    const currentCopy = theme.copy as StructuredCopy | null;
+    const currentSlideCount = effectiveSlideCount(currentCopy);
+    const currentDuration = typeof currentCopy?.durationSeconds === "number" ? currentCopy.durationSeconds : undefined;
 
     const result = await rewriteEditorialTheme(
       {
         instructions,
         slideCount: currentSlideCount,
+        durationSeconds: currentDuration,
         theme: {
           title: theme.title, format: theme.format, channel: theme.channel,
           strategicObjective: theme.strategicObjective, hook: theme.hook, cta: theme.cta,
@@ -74,17 +77,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       { organizationId: org },
     );
 
-    // Garante que o carrossel reescrito mantenha EXATAMENTE a quantidade de
-    // telas (repara se a IA devolver diferente). Outros formatos passam intactos.
-    const finalCopy =
-      (result.copy as StructuredCopy | undefined)?.format === "carrossel" || (theme.copy as StructuredCopy | null)?.format === "carrossel"
-        ? enforceCarouselCopy(
-            result.copy as StructuredCopy | undefined,
-            currentSlideCount ?? 5,
-            { brand: client?.name ?? "", niche: client?.industry ?? "seu mercado" },
-            0,
-          )
-        : (result.copy ?? theme.copy);
+    // Repara a estrutura: carrossel mantém a contagem de telas; vídeo/motion
+    // mantém a duração. Estático passa intacto.
+    const resultCopy = result.copy as StructuredCopy | undefined;
+    const fmt = resultCopy?.format ?? currentCopy?.format;
+    let finalCopy: unknown = result.copy ?? theme.copy;
+    if (fmt === "carrossel") {
+      finalCopy = enforceCarouselCopy(resultCopy, currentSlideCount ?? 5, { brand: client?.name ?? "", niche: client?.industry ?? "seu mercado" }, 0);
+    } else if ((fmt === "video" || fmt === "motion") && currentDuration) {
+      finalCopy = { ...(resultCopy ?? currentCopy ?? { format: fmt }), format: fmt, durationSeconds: currentDuration, estimatedDuration: formatDuration(currentDuration) };
+    }
 
     // Grava SOMENTE neste tema. Marca como "revisar" para o operador conferir o
     // resultado do ajuste antes de aprovar. adjustmentNote é preservado.

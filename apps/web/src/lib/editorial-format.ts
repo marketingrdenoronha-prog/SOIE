@@ -47,7 +47,8 @@ export interface StaticCopy { headline: string; subheadline?: string; body: stri
 /** Copy completa estruturada, por formato. */
 export interface StructuredCopy {
   format: FormatKey;
-  estimatedDuration?: string;   // vídeo/motion
+  estimatedDuration?: string;   // vídeo/motion — rótulo legível (ex.: "1min05s")
+  durationSeconds?: number;     // vídeo/motion — duração definida pelo usuário (segundos)
   sections?: CopySection[];     // vídeo/motion (Gancho, Conexão, Desenvolvimento, Virada, CTA)
   slides?: CopySlide[];         // carrossel
   slideCount?: number;          // carrossel — quantidade de telas definida pelo usuário (2–8)
@@ -90,4 +91,61 @@ export function effectiveSlideCount(copy: StructuredCopy | undefined | null): nu
   if (typeof copy.slideCount === "number") return clampSlideCount(copy.slideCount);
   if (Array.isArray(copy.slides) && copy.slides.length > 0) return copy.slides.length;
   return undefined;
+}
+
+// ── Configuração individual por CONTEÚDO (todos os formatos) ────────────────
+export const VIDEO_DEFAULT_DURATION = 30;
+export const MOTION_DEFAULT_DURATION = 15;
+export const DURATION_MIN = 1;   // inteiro positivo (> 0)
+export const DURATION_MAX = 3600; // guarda de segurança (não é limite de produto)
+
+/** Garante duração inteira e positiva; usa `fallback` quando inválida. */
+export function clampDuration(n: unknown, fallback: number): number {
+  const v = Math.round(Number(n));
+  if (!Number.isFinite(v) || v <= 0) return fallback;
+  return Math.min(DURATION_MAX, Math.max(DURATION_MIN, v));
+}
+
+/** Duração legível a partir de segundos (ex.: 30 → "30s", 65 → "1min05s"). */
+export function formatDuration(seconds: number): string {
+  const s = Math.max(1, Math.round(seconds));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return rem === 0 ? `${m}min` : `${m}min${String(rem).padStart(2, "0")}s`;
+}
+
+/** Configuração de UM conteúdo: tema opcional + (duração | telas) por formato. */
+export interface ContentItemConfig { theme?: string; durationSeconds?: number; slideCount?: number }
+/** Configurações por formato (uma lista por formato, na ordem dos conteúdos). */
+export type ContentConfigs = Partial<Record<FormatKey, ContentItemConfig[]>>;
+
+/** Valor padrão de um item novo, conforme o formato. */
+export function defaultConfigFor(format: FormatKey): ContentItemConfig {
+  if (format === "video") return { theme: "", durationSeconds: VIDEO_DEFAULT_DURATION };
+  if (format === "motion") return { theme: "", durationSeconds: MOTION_DEFAULT_DURATION };
+  if (format === "carrossel") return { theme: "", slideCount: CAROUSEL_DEFAULT_SLIDES };
+  return { theme: "" };
+}
+
+/** Reconcilia TODAS as configs às quantidades por formato: preserva o que já
+ * foi digitado, cria novos itens com o padrão e remove excedentes. Nunca há
+ * mais configs que conteúdos daquele formato. */
+export function reconcileContentConfigs(prev: ContentConfigs, counts: Record<FormatKey, number>): Record<FormatKey, ContentItemConfig[]> {
+  const out = { video: [], motion: [], carrossel: [], estatico: [] } as Record<FormatKey, ContentItemConfig[]>;
+  for (const f of ["video", "motion", "carrossel", "estatico"] as FormatKey[]) {
+    const n = Math.max(0, Math.floor(counts[f] ?? 0));
+    const cur = prev[f] ?? [];
+    for (let i = 0; i < n; i++) {
+      const existing = cur[i];
+      out[f].push(existing ? { ...defaultConfigFor(f), ...existing } : defaultConfigFor(f));
+    }
+  }
+  return out;
+}
+
+/** Normaliza um tema: string vazia/espaços → undefined (livre para a IA). */
+export function normalizeTheme(theme: unknown): string | undefined {
+  const t = typeof theme === "string" ? theme.trim() : "";
+  return t ? t.slice(0, 300) : undefined;
 }

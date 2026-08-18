@@ -4,10 +4,16 @@ import {
   formatLabel,
   toFormatKey,
   clampSlideCount,
+  clampDuration,
+  normalizeTheme,
+  formatDuration,
   type FormatCounts,
   type FormatKey,
   type StructuredCopy,
   type CopySlide,
+  type CopySection,
+  type ContentConfigs,
+  type ContentItemConfig,
 } from "@/lib/editorial-format";
 
 /**
@@ -74,33 +80,53 @@ function objectiveNote(ctx: GenerationContext, fallback: string): string {
 /** Vídeo/Motion: narração completa gravável (40s a 2min), 5 partes. A copy é a
  * fala palavra por palavra — desenvolvida o bastante para 40–120s de locução
  * (mín. ~130 palavras, ideal 180–320), nunca um resumo. */
-function scriptCopy(i: number, ctx: GenerationContext, isMotion: boolean): StructuredCopy {
+function scriptCopy(i: number, ctx: GenerationContext, isMotion: boolean, durationSeconds?: number): StructuredCopy {
   const { title } = angle(i, ctx);
-  const durations = ["50s", "1min05s", "1min20s", "1min40s", "55s"];
-  const sections = [
-    {
-      label: "Gancho",
-      text: `${title}? Segura aí os próximos segundos, porque isso muda a forma como você enxerga ${ctx.niche} — e provavelmente explica por que tanta coisa que você tenta não engata como deveria.`,
-    },
-    {
-      label: "Conexão",
-      text: `Se você vive de ${ctx.niche}, essa cena é familiar: você se dedica, testa uma ideia atrás da outra, posta, investe tempo e dinheiro — e mesmo assim o resultado vem em soluço, num mês aparece e no outro some. Cansa. E o pior é a sensação de que o esforço não está virando previsibilidade. A gente convive com isso todos os dias na ${ctx.brand}, então não vou te dar fórmula mágica: vou te mostrar o que realmente trava.`,
-    },
-    {
-      label: "Desenvolvimento",
-      text: `O que quase ninguém te conta é que o problema raramente está no seu produto ou no seu talento — está na estrutura por trás dele. Comunicação sem clareza, oferta que o cliente não entende em segundos, ausência de prova real e uma frequência que oscila. Quando esses quatro pontos ficam soltos, cada ação começa do zero e nada acumula. Na ${ctx.brand} a gente organiza isso na ordem certa: primeiro deixa nítido o que você resolve e para quem, depois estrutura a prova (casos, bastidores, números reais) e só então define um ritmo de conteúdo que sustenta a mensagem em vez de repetir a mesma coisa. É método, passo a passo, sem achismo.`,
-    },
-    {
-      label: "Virada",
-      text: `E aqui está o insight que vira a chave: não é sobre trabalhar mais, é sobre trabalhar com estrutura. No instante em que clareza, prova e consistência passam a jogar juntas, o resultado deixa de depender de sorte e começa a se repetir. Foi exatamente assim que os nossos clientes saíram do improviso — daquele "vamos ver se pega" — para um crescimento que dá pra prever e planejar.`,
-    },
-    { label: "CTA", text: ctaFor(i, ctx) },
-  ];
+  const dur = durationSeconds && durationSeconds > 0 ? Math.round(durationSeconds) : isMotion ? 15 : 45;
   return {
     format: isMotion ? "motion" : "video",
-    estimatedDuration: durations[i % durations.length],
-    sections,
+    estimatedDuration: formatDuration(dur),
+    durationSeconds: dur,
+    sections: buildScriptSections(title, ctx, i, dur),
   };
+}
+
+/** Roteiro demo com estrutura/ritmo compatíveis com a DURAÇÃO pedida: curto
+ * (≤20s) = 3 partes enxutas; médio (≤40s) = 4 partes; longo (>40s) = 5 partes
+ * desenvolvidas. Nunca encaixa o mesmo texto em qualquer duração. */
+function buildScriptSections(title: string, ctx: GenerationContext, i: number, dur: number): CopySection[] {
+  const gancho = dur <= 20
+    ? `${title}? Presta atenção nos próximos segundos — isso muda como você vê ${ctx.niche}.`
+    : `${title}? Segura aí os próximos segundos, porque isso muda a forma como você enxerga ${ctx.niche} — e explica por que tanta coisa que você tenta não engata como deveria.`;
+  const conexaoCurta = `Se você vive de ${ctx.niche}, conhece a cena: esforço que não vira resultado previsível.`;
+  const conexaoFull = `Se você vive de ${ctx.niche}, essa cena é familiar: você se dedica, testa ideia atrás de ideia, investe tempo e dinheiro — e o resultado vem em soluço. A gente convive com isso na ${ctx.brand}, então nada de fórmula mágica: vou te mostrar o que realmente trava.`;
+  const desenvCurto = `O problema raramente está no seu talento — está na estrutura: falta clareza, prova e consistência. Sem isso, cada post começa do zero.`;
+  const desenvFull = `O que quase ninguém conta é que o problema não está no seu produto, e sim na estrutura por trás dele: comunicação sem clareza, oferta que não se entende em segundos, ausência de prova real e frequência que oscila. Na ${ctx.brand} a gente organiza isso na ordem certa — primeiro o que você resolve e para quem, depois a prova, e só então um ritmo que sustenta a mensagem.`;
+  const virada = `O insight que vira a chave: não é trabalhar mais, é trabalhar com estrutura. Quando clareza, prova e consistência jogam juntas, o resultado deixa de depender de sorte e começa a se repetir.`;
+  const cta = ctaFor(i, ctx);
+
+  if (dur <= 20) {
+    return [
+      { label: "Gancho", text: gancho },
+      { label: "Desenvolvimento", text: desenvCurto },
+      { label: "CTA", text: cta },
+    ];
+  }
+  if (dur <= 40) {
+    return [
+      { label: "Gancho", text: gancho },
+      { label: "Conexão", text: conexaoCurta },
+      { label: "Desenvolvimento", text: desenvFull },
+      { label: "CTA", text: cta },
+    ];
+  }
+  return [
+    { label: "Gancho", text: gancho },
+    { label: "Conexão", text: conexaoFull },
+    { label: "Desenvolvimento", text: desenvFull },
+    { label: "Virada", text: virada },
+    { label: "CTA", text: cta },
+  ];
 }
 
 /** Headline curta (≤10 palavras) para arte — sem jogar o nicho cru na peça. */
@@ -220,12 +246,15 @@ function staticCopy(i: number, ctx: GenerationContext): StructuredCopy {
   };
 }
 
-function makeTheme(format: FormatKey, i: number, ctx: GenerationContext, slideCount?: number): GeneratedTheme {
-  const { title, obj } = angle(i, ctx);
+function makeTheme(format: FormatKey, i: number, ctx: GenerationContext, cfg?: ContentItemConfig): GeneratedTheme {
+  const a = angle(i, ctx);
+  const obj = a.obj;
+  // Tema individual (quando informado) é a direção obrigatória → vira o título.
+  const title = normalizeTheme(cfg?.theme) ?? a.title;
   const label = formatLabel(format);
-  const copy = format === "carrossel" ? carouselCopy(i, ctx, slideCount ?? 5)
+  const copy = format === "carrossel" ? carouselCopy(i, ctx, cfg?.slideCount ?? 5)
     : format === "estatico" ? staticCopy(i, ctx)
-    : scriptCopy(i, ctx, format === "motion");
+    : scriptCopy(i, ctx, format === "motion", cfg?.durationSeconds);
   const hook = format === "carrossel" ? (copy.slides?.[0]?.text ?? title)
     : format === "estatico" ? (copy.static?.headline ?? title)
     : (copy.sections?.[0]?.text ?? title);
@@ -247,15 +276,36 @@ function makeTheme(format: FormatKey, i: number, ctx: GenerationContext, slideCo
 
 /** Gera exatamente a distribuição de formatos solicitada, cada conteúdo pronto
  * para produção. Agrupa os temas por formato dentro de uma única linha. */
-export function buildDemoThemes(ctx: GenerationContext, counts: FormatCounts, carouselSlides?: number[]): GeneratedTheme[] {
+/**
+ * Aplica a config individual a UM conteúdo já gerado (real ou demo), na ordem:
+ * - Carrossel → garante a quantidade EXATA de telas (enforceCarouselCopy).
+ * - Vídeo/Motion → grava a duração pedida (durationSeconds + rótulo).
+ * - Tema → só entra como título quando o gerador não trouxe um (não sobrescreve
+ *   o título que a IA sofisticou; a direção do tema vai à IA pelo prompt).
+ */
+export function applyContentConfig(theme: GeneratedTheme, cfg: ContentItemConfig | undefined, ctx: GenerationContext, i: number): GeneratedTheme {
+  const key = toFormatKey(theme.format);
+  const wanted = normalizeTheme(cfg?.theme);
+  const title = theme.title && theme.title.trim() ? theme.title : wanted ?? theme.title;
+  let copy = theme.copy;
+  if (key === "carrossel") {
+    const target = cfg?.slideCount ?? (typeof copy?.slideCount === "number" ? copy.slideCount : 5);
+    copy = enforceCarouselCopy(copy, target, ctx, i);
+  } else if ((key === "video" || key === "motion") && typeof cfg?.durationSeconds === "number") {
+    const dur = clampDuration(cfg.durationSeconds, key === "motion" ? 15 : 45);
+    copy = { ...copy, format: key, durationSeconds: dur, estimatedDuration: formatDuration(dur) };
+  }
+  return { ...theme, title, copy };
+}
+
+export function buildDemoThemes(ctx: GenerationContext, counts: FormatCounts, configs?: ContentConfigs): GeneratedTheme[] {
   const out: GeneratedTheme[] = [];
   let i = 0;
   for (const { key } of EDITORIAL_FORMATS) {
     const n = Math.max(0, Math.floor(counts[key] ?? 0));
     for (let k = 0; k < n; k++) {
-      // Cada carrossel demo respeita a quantidade individual de telas pedida.
-      const slideCount = key === "carrossel" ? carouselSlides?.[k] : undefined;
-      out.push(makeTheme(key, i++, ctx, slideCount));
+      // Cada conteúdo demo respeita sua config individual (tema/duração/telas).
+      out.push(makeTheme(key, i++, ctx, configs?.[key]?.[k]));
     }
   }
   return out;
