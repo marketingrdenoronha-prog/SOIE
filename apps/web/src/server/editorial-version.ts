@@ -5,7 +5,7 @@ import { retrieveKnowledge, buildKnowledgeQuery } from "@/server/knowledge/retri
 import { resolveDefaultProjectId } from "@/server/client-scope";
 import { type GenerationContext } from "@/server/editorial-content";
 import { generateEditorialThemes, bucketsToLines } from "@/server/editorial-generation";
-import { type FormatCounts } from "@/lib/editorial-format";
+import { type FormatCounts, type StructuredCopy, effectiveSlideCount, toFormatKey } from "@/lib/editorial-format";
 
 /**
  * Gera a PRÓXIMA versão da linha editorial de um cliente. Ponto ÚNICO de
@@ -30,6 +30,10 @@ export async function generateNextStrategyVersion(
      * observações de geração. */
     guidance?: string;
     formatCounts?: Partial<FormatCounts>;
+    /** Quantidade obrigatória de telas por carrossel (2–8), na ORDEM dos
+     * carrosséis. Quando ausente numa regeneração, é derivada da versão
+     * anterior para preservar as escolhas do usuário. */
+    carouselSlides?: number[];
   } = {},
 ) {
   const client = await prisma.client.findFirst({
@@ -53,6 +57,22 @@ export async function generateNextStrategyVersion(
     assembleProjectContext(organizationId, projectId),
   ]);
   if (!project) throw Errors.notFound("Projeto");
+
+  // Quantidade de telas por carrossel: usa a do usuário; numa regeneração sem
+  // config explícita, deriva da versão anterior para PRESERVAR as escolhas.
+  let carouselSlides = opts.carouselSlides;
+  if ((!carouselSlides || carouselSlides.length === 0) && previous) {
+    const prevThemes = await prisma.theme.findMany({
+      where: { organizationId, category: { editorialLine: { strategyId: previous.id } } },
+      orderBy: { priority: "asc" },
+      select: { format: true, copy: true },
+    });
+    const derived = prevThemes
+      .filter((t) => toFormatKey(t.format ?? "") === "carrossel")
+      .map((t) => effectiveSlideCount(t.copy as StructuredCopy | null))
+      .filter((n): n is number => typeof n === "number");
+    if (derived.length > 0) carouselSlides = derived;
+  }
 
   const nextVersion = (previous?.version ?? 0) + 1;
   const feedback = previous?.reviewComments
@@ -128,9 +148,13 @@ export async function generateNextStrategyVersion(
       observations,
       // Momento/atualidade p/ newsjacking nos ganchos de vídeo (input.momento).
       momento: opts.momento?.trim() || undefined,
+      // Quantidade OBRIGATÓRIA de telas por carrossel (na ordem) — a IA deve
+      // gerar exatamente estes números.
+      carouselSlides,
       brief,
     },
     requested: opts.formatCounts,
+    carouselSlides,
     genCtx,
     context,
     organizationId,

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { runAgent } from "./ai-runtime";
-import { coerceTheme, buildDemoThemes, type GeneratedTheme, type GenerationContext } from "./editorial-content";
-import { EDITORIAL_FORMATS, formatLabel, toFormatKey, type FormatCounts, type FormatKey } from "@/lib/editorial-format";
+import { coerceTheme, buildDemoThemes, enforceCarouselCopy, type GeneratedTheme, type GenerationContext } from "./editorial-content";
+import { EDITORIAL_FORMATS, formatLabel, toFormatKey, clampSlideCount, CAROUSEL_DEFAULT_SLIDES, type FormatCounts, type FormatKey } from "@/lib/editorial-format";
 
 /**
  * Geração da Linha Editorial com GARANTIA DE QUANTIDADE.
@@ -90,6 +90,8 @@ function flattenCoerce(res: any, genCtx: GenerationContext, nextIndex: () => num
 export async function generateEditorialThemes(opts: {
   baseInput: Record<string, unknown>;
   requested?: Partial<FormatCounts>;
+  /** Quantidade obrigatória de telas por carrossel, na ORDEM dos carrosséis. */
+  carouselSlides?: number[];
   genCtx: GenerationContext;
   context: Record<string, unknown>;
   organizationId: string;
@@ -97,6 +99,18 @@ export async function generateEditorialThemes(opts: {
 }): Promise<GeneratedStrategy> {
   const { baseInput, genCtx, context, organizationId, now } = opts;
   const target = normalize(opts.requested);
+  const carouselSlides = (opts.carouselSlides ?? []).map((n) => clampSlideCount(n));
+
+  // Aplica a quantidade EXATA de telas em cada carrossel (na ordem), reparando
+  // o que a IA devolver diferente. Guarda `slideCount` na copy.
+  const enforceCarousels = (b: Record<FormatKey, GeneratedTheme[]>) => {
+    if (carouselSlides.length === 0) return b;
+    b.carrossel = b.carrossel.map((t, idx) => ({
+      ...t,
+      copy: enforceCarouselCopy(t.copy, carouselSlides[idx] ?? CAROUSEL_DEFAULT_SLIDES, genCtx, idx),
+    }));
+    return b;
+  };
   const totalTarget = totalOf(target);
   const buckets = emptyBuckets();
   let index = 0;
@@ -147,8 +161,8 @@ export async function generateEditorialThemes(opts: {
   // Modo demo (sem chave de IA): a geração é determinística e não trunca — gera
   // o conjunto completo de uma vez, com a melhor distribuição de ângulos.
   if (meta._demo) {
-    for (const t of buildDemoThemes(genCtx, target)) buckets[toFormatKey(t.format)].push(t);
-    return { meta, themesByFormat: buckets, total: filled(), usedFill: false, rounds };
+    for (const t of buildDemoThemes(genCtx, target, carouselSlides)) buckets[toFormatKey(t.format)].push(t);
+    return { meta, themesByFormat: enforceCarousels(buckets), total: filled(), usedFill: false, rounds };
   }
 
   absorb(first, true);
@@ -202,24 +216,12 @@ export async function generateEditorialThemes(opts: {
     if (buckets[k].length > target[k]) buckets[k] = buckets[k].slice(0, target[k]);
   }
 
-  return { meta, themesByFormat: buckets, total: filled(), usedFill, rounds };
+  return { meta, themesByFormat: enforceCarousels(buckets), total: filled(), usedFill, rounds };
 }
 
 /** Monta as `editorialLines` (uma linha, categorias por formato) para o create
- * do Prisma, a partir dos baldes por formato. */
-/**
- * Rede de segurança: garante NO MÁXIMO 4 telas no carrossel. Se a IA devolver
- * mais, mantém as 3 primeiras e a última (o CTA) — preservando começo, meio e
- * fim. Só mexe em copy de carrossel; qualquer outro formato passa intacto.
- */
-function clampCarousel(copy: unknown): unknown {
-  if (!copy || typeof copy !== "object") return copy;
-  const c = copy as { format?: string; slides?: unknown[] };
-  if (c.format !== "carrossel" || !Array.isArray(c.slides) || c.slides.length <= 4) return copy;
-  const slides = c.slides;
-  return { ...c, slides: [...slides.slice(0, 3), slides[slides.length - 1]] };
-}
-
+ * do Prisma, a partir dos baldes por formato. A quantidade de telas de cada
+ * carrossel já foi aplicada em `enforceCarousels` (copy.slideCount + slides). */
 export function bucketsToLines(
   buckets: Record<FormatKey, GeneratedTheme[]>,
   organizationId: string,
@@ -246,7 +248,7 @@ export function bucketsToLines(
               title: t.title,
               channel: t.channel,
               format: t.format,
-              copy: clampCarousel(t.copy) as never,
+              copy: t.copy as never,
               strategicObjective: t.strategicObjective,
               hook: t.hook,
               cta: t.cta,

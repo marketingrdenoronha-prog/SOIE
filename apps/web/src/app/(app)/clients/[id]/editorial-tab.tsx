@@ -4,7 +4,14 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { arr, text } from "@/lib/render";
 import { EditorialThemesEditor } from "@/components/editorial-themes-editor";
-import { EDITORIAL_FORMATS, EMPTY_FORMAT_COUNTS, type FormatCounts } from "@/lib/editorial-format";
+import {
+  EDITORIAL_FORMATS,
+  EMPTY_FORMAT_COUNTS,
+  reconcileCarouselSlides,
+  CAROUSEL_MIN_SLIDES,
+  CAROUSEL_MAX_SLIDES,
+  type FormatCounts,
+} from "@/lib/editorial-format";
 
 type Strategy = any;
 
@@ -15,10 +22,18 @@ export function EditorialTab({ clientId }: { clientId: string }) {
   const [sendBusy, setSendBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [counts, setCounts] = useState<FormatCounts>({ ...EMPTY_FORMAT_COUNTS });
+  // Quantidade INDIVIDUAL de telas por carrossel (ordem = Carrossel 1..N).
+  const [carouselSlides, setCarouselSlides] = useState<number[]>([]);
   const [objective, setObjective] = useState("");
   const [observations, setObservations] = useState("");
   const [momento, setMomento] = useState("");
   const total = counts.video + counts.motion + counts.carrossel + counts.estatico;
+
+  // Reage à quantidade de carrosséis: preserva as configs existentes, novas =
+  // padrão (5), remove excedentes — nunca há mais configs que carrosséis.
+  useEffect(() => {
+    setCarouselSlides((prev) => reconcileCarouselSlides(prev, counts.carrossel));
+  }, [counts.carrossel]);
 
   async function load() {
     setErr(null);
@@ -37,6 +52,7 @@ export function EditorialTab({ clientId }: { clientId: string }) {
         method: "POST",
         body: JSON.stringify({
           formatCounts: counts,
+          carouselConfigs: counts.carrossel > 0 ? carouselSlides.map((slideCount, index) => ({ index, slideCount })) : undefined,
           objective: objective || undefined,
           observations: observations || undefined,
           momento: momento || undefined,
@@ -118,6 +134,35 @@ export function EditorialTab({ clientId }: { clientId: string }) {
           </div>
           <p className="mt-1 text-[11px] text-muted">Total: {total} conteúdo(s){total === 0 ? " — deixe zerado para uma distribuição sugerida." : ""}</p>
         </div>
+
+        {counts.carrossel > 0 && (
+          <div className="mt-3 rounded-lg border border-border bg-surface p-3">
+            <p className="label-caps mb-2 text-muted">Telas por carrossel</p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {carouselSlides.map((slides, i) => (
+                <div key={i} className="flex items-center justify-between gap-3 rounded-md border border-border bg-elevated px-3 py-2">
+                  <span className="text-sm font-medium">Carrossel {i + 1}</span>
+                  <label className="flex items-center gap-2">
+                    <span className="text-xs text-muted">Telas</span>
+                    <select
+                      value={slides}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        setCarouselSlides((prev) => prev.map((s, idx) => (idx === i ? v : s)));
+                      }}
+                      className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-brand"
+                    >
+                      {Array.from({ length: CAROUSEL_MAX_SLIDES - CAROUSEL_MIN_SLIDES + 1 }, (_, k) => CAROUSEL_MIN_SLIDES + k).map((n) => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px] text-muted">Cada carrossel terá exatamente a quantidade de telas escolhida (mín. {CAROUSEL_MIN_SLIDES}, máx. {CAROUSEL_MAX_SLIDES}). A IA respeita esses números.</p>
+          </div>
+        )}
 
         <label className="mt-3 block">
           <span className="text-xs font-medium text-muted">Objetivo da linha editorial (opcional)</span>

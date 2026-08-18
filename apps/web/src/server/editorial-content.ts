@@ -3,9 +3,11 @@ import {
   EDITORIAL_FORMATS,
   formatLabel,
   toFormatKey,
+  clampSlideCount,
   type FormatCounts,
   type FormatKey,
   type StructuredCopy,
+  type CopySlide,
 } from "@/lib/editorial-format";
 
 /**
@@ -121,33 +123,82 @@ function shortCta(i: number): string {
   return SHORT_CTAS[i % SHORT_CTAS.length]!;
 }
 
-/** Carrossel: NO MÁXIMO 4 telas, cada uma como cena de um ROTEIRO conectado —
- * Curiosidade → Contexto → Consequência → Solução. Cada tela desenvolve o
- * raciocínio (3 a 6 frases) e puxa a próxima; nunca frase de efeito solta. */
-function carouselCopy(i: number, ctx: GenerationContext): StructuredCopy {
-  const slides = [
-    {
-      // Tela 1 — curiosidade/tensão: apresenta a situação e faz deslizar.
-      title: "Curiosidade",
-      text: `${shortHeadline(i)}. Você posta com frequência, aparece, capricha no visual — e mesmo assim sente que o retorno não acompanha o esforço. Se isso soa familiar, o problema quase nunca é falta de trabalho: é uma peça invisível que trava tudo por trás. Deslize que eu vou te mostrar exatamente onde está o gargalo.`,
-    },
-    {
-      // Tela 2 — aprofunda o problema: explica POR QUE acontece.
-      title: "Contexto",
-      text: "O que trava o resultado é a falta de estrutura na comunicação. Sem clareza, o público não entende em segundos o que você resolve e passa reto — a mensagem fala de você, não da dor dele. E o algoritmo só entrega para mais gente o conteúdo que já prendeu quem viu; se ninguém para, ninguém alcança. Ou seja: não é volume, é a base que sustenta cada post.",
-    },
-    {
-      // Tela 3 — consequências/impactos reais do problema.
-      title: "Consequência",
-      text: "Na prática, isso vira um ciclo caro: você produz mais para compensar, gasta tempo e energia, e ainda assim o perfil não cresce nem gera conversa. Cada semana sem estrutura é audiência que não volta, autoridade que não se constrói e venda que não acontece. O pior é a sensação de estar correndo no lugar — muito esforço, pouco resultado — que faz muita gente desistir bem antes de o conteúdo dar retorno.",
-    },
-    {
-      // Tela 4 — solução + CTA que fecha o raciocínio.
-      title: "Solução",
-      text: `A saída não é postar mais, é postar com método: clareza para o público se enxergar, prova real para sustentar a promessa e consistência para manter o ritmo. Com essa base, o mesmo esforço passa a virar resultado previsível. Se você quer ajustar essa estrutura antes de produzir o próximo conteúdo, ${shortCta(i).toLowerCase()} — a ${ctx.brand} te mostra por onde começar.`,
-    },
-  ];
-  return { format: "carrossel", slides };
+/** Blocos de desenvolvimento (miolo do roteiro) reutilizados para compor N telas. */
+const CAROUSEL_DEV_BLOCKS = [
+  "O que trava o resultado é a falta de estrutura na comunicação. Sem clareza, o público não entende em segundos o que você resolve e passa reto — a mensagem fala de você, não da dor dele. E o algoritmo só entrega para mais gente o conteúdo que já prendeu quem viu; se ninguém para, ninguém alcança.",
+  "Repare no padrão: quase todo post tenta falar com todo mundo ao mesmo tempo. Quando a mensagem não mira uma dor específica, ela vira ruído — a pessoa rola o feed e nem registra que passou por ali. Especificidade é o que faz alguém sentir 'isso é sobre mim'.",
+  "Na prática, isso vira um ciclo caro: você produz mais para compensar, gasta tempo e energia, e ainda assim o perfil não cresce nem gera conversa. Cada semana sem estrutura é audiência que não volta, autoridade que não se constrói e venda que não acontece.",
+  "Falta também a prova. Promessa sem evidência é só mais um anúncio em que ninguém acredita — case real, print de resultado, depoimento e bastidor constroem a confiança que a venda precisa antes de qualquer oferta.",
+  "E há a consistência: aparecer com método, no ritmo certo, sem repetir sempre a mesma ideia. É a repetição estratégica que fixa o posicionamento na cabeça do público e transforma seguidor em cliente ao longo do tempo.",
+  "Some tudo isso e o efeito é composto: clareza atrai, prova convence e consistência mantém. Cada peça deixa de ser um tiro isolado e passa a construir uma narrativa que leva a pessoa do primeiro contato até a decisão.",
+];
+
+/** Carrossel demo com EXATAMENTE `slideCount` telas (2–8), como um ROTEIRO
+ * conectado — abertura → desenvolvimento(s) → fechamento/CTA. Cada tela tem
+ * conteúdo próprio e desenvolvido; nunca frase de efeito solta nem tela vazia. */
+function carouselCopy(i: number, ctx: GenerationContext, slideCount = 5): StructuredCopy {
+  const n = Math.min(8, Math.max(2, Math.round(slideCount) || 5));
+  const opening = {
+    title: "Abertura",
+    text: `${shortHeadline(i)}. Você posta com frequência, aparece, capricha no visual — e mesmo assim sente que o retorno não acompanha o esforço. Se isso soa familiar, o problema quase nunca é falta de trabalho: é uma peça invisível que trava tudo por trás. Deslize que eu vou te mostrar exatamente onde está o gargalo.`,
+  };
+  const closing = {
+    title: "Fechamento",
+    text: `A saída não é postar mais, é postar com método: clareza para o público se enxergar, prova real para sustentar a promessa e consistência para manter o ritmo. Com essa base, o mesmo esforço vira resultado previsível. Se você quer ajustar isso antes do próximo conteúdo, ${shortCta(i).toLowerCase()} — a ${ctx.brand} te mostra por onde começar.`,
+  };
+  const middleCount = Math.max(0, n - 2);
+  const middles = Array.from({ length: middleCount }, (_, k) => ({
+    title: `Desenvolvimento ${k + 1}`,
+    text: CAROUSEL_DEV_BLOCKS[k % CAROUSEL_DEV_BLOCKS.length]!,
+  }));
+  // n === 2 → [abertura, fechamento]; n > 2 → abertura + miolos + fechamento.
+  const slides = n === 2 ? [opening, closing] : [opening, ...middles, closing];
+  return { format: "carrossel", slides, slideCount: n };
+}
+
+/**
+ * Ajusta uma copy de carrossel para EXATAMENTE `target` telas (2–8), tanto no
+ * fluxo real quanto no demo. Preserva a narrativa: excesso → mantém abertura +
+ * fechamento e amostra o miolo; falta → completa com blocos de desenvolvimento
+ * REAIS (nunca telas vazias, nunca corte cego). Define `slideCount`. É o
+ * mecanismo de reparo quando a IA devolve uma quantidade diferente da pedida.
+ */
+export function enforceCarouselCopy(copy: StructuredCopy | undefined, target: number, ctx: GenerationContext, i = 0): StructuredCopy {
+  const n = clampSlideCount(target);
+  const base: StructuredCopy = copy && typeof copy === "object" ? { ...copy, format: "carrossel" } : { format: "carrossel" };
+  const slides: CopySlide[] = Array.isArray(base.slides) ? base.slides.filter((s) => str(s?.text)) : [];
+
+  if (slides.length === n) return { ...base, slides, slideCount: n };
+
+  if (slides.length > n) {
+    const first = slides[0]!;
+    const last = slides[slides.length - 1]!;
+    const middle = slides.slice(1, -1);
+    const need = n - 2;
+    const picked: CopySlide[] = [];
+    for (let k = 0; k < need && middle.length > 0; k++) {
+      const idx = need <= 1 ? 0 : Math.round((k * (middle.length - 1)) / (need - 1));
+      picked.push(middle[Math.min(middle.length - 1, idx)]!);
+    }
+    const kept = n === 2 ? [first, last] : [first, ...picked, last];
+    return { ...base, slides: kept.slice(0, n), slideCount: n };
+  }
+
+  // slides.length < n → completa preservando o que a IA trouxe e adicionando
+  // desenvolvimento real (do roteiro demo) até bater a contagem.
+  if (slides.length === 0) {
+    return { ...base, slides: carouselCopy(i, ctx, n).slides ?? [], slideCount: n };
+  }
+  const first = slides[0]!;
+  const last = slides[slides.length - 1]!;
+  const out: CopySlide[] = [first, ...slides.slice(1, -1)];
+  let d = 1;
+  while (out.length < n - 1) {
+    out.push({ title: `Desenvolvimento ${d}`, text: CAROUSEL_DEV_BLOCKS[(d - 1) % CAROUSEL_DEV_BLOCKS.length]! });
+    d++;
+  }
+  out.push(last);
+  return { ...base, slides: out.slice(0, n), slideCount: n };
 }
 
 /** Estático: textos CURTOS (≤10 palavras) para casar com a arte. Profundidade
@@ -169,10 +220,10 @@ function staticCopy(i: number, ctx: GenerationContext): StructuredCopy {
   };
 }
 
-function makeTheme(format: FormatKey, i: number, ctx: GenerationContext): GeneratedTheme {
+function makeTheme(format: FormatKey, i: number, ctx: GenerationContext, slideCount?: number): GeneratedTheme {
   const { title, obj } = angle(i, ctx);
   const label = formatLabel(format);
-  const copy = format === "carrossel" ? carouselCopy(i, ctx)
+  const copy = format === "carrossel" ? carouselCopy(i, ctx, slideCount ?? 5)
     : format === "estatico" ? staticCopy(i, ctx)
     : scriptCopy(i, ctx, format === "motion");
   const hook = format === "carrossel" ? (copy.slides?.[0]?.text ?? title)
@@ -196,12 +247,16 @@ function makeTheme(format: FormatKey, i: number, ctx: GenerationContext): Genera
 
 /** Gera exatamente a distribuição de formatos solicitada, cada conteúdo pronto
  * para produção. Agrupa os temas por formato dentro de uma única linha. */
-export function buildDemoThemes(ctx: GenerationContext, counts: FormatCounts): GeneratedTheme[] {
+export function buildDemoThemes(ctx: GenerationContext, counts: FormatCounts, carouselSlides?: number[]): GeneratedTheme[] {
   const out: GeneratedTheme[] = [];
   let i = 0;
   for (const { key } of EDITORIAL_FORMATS) {
     const n = Math.max(0, Math.floor(counts[key] ?? 0));
-    for (let k = 0; k < n; k++) out.push(makeTheme(key, i++, ctx));
+    for (let k = 0; k < n; k++) {
+      // Cada carrossel demo respeita a quantidade individual de telas pedida.
+      const slideCount = key === "carrossel" ? carouselSlides?.[k] : undefined;
+      out.push(makeTheme(key, i++, ctx, slideCount));
+    }
   }
   return out;
 }
@@ -237,9 +292,12 @@ export function validateThemeReady(t: GeneratedTheme): string[] {
   const key = toFormatKey(t.format);
   const wc = (s: string) => (s ? s.trim().split(/\s+/).filter(Boolean).length : 0);
   if (key === "carrossel") {
-    // Arte: texto CURTO por slide (≤10 palavras). Valida presença + teto.
-    if (!t.copy.slides || t.copy.slides.length < 3) issues.push("carrossel raso (< 3 slides)");
-    if ((t.copy.slides ?? []).some((s) => wc(str(s?.text)) > 12)) issues.push("carrossel com texto longo (>10 palavras/slide)");
+    // Roteiro conectado com a quantidade EXATA de telas pedida pelo usuário.
+    const slides = t.copy.slides ?? [];
+    const target = typeof t.copy.slideCount === "number" ? t.copy.slideCount : undefined;
+    if (slides.length < 2) issues.push("carrossel raso (< 2 telas)");
+    if (target !== undefined && slides.length !== target) issues.push(`carrossel com ${slides.length} telas (esperado ${target})`);
+    if (slides.some((s) => !str(s?.text))) issues.push("carrossel com tela vazia");
   } else if (key === "estatico") {
     // Arte: textos CURTOS (≤10 palavras). Só exige headline + body presentes.
     if (!t.copy.static?.headline) issues.push("estático sem headline");

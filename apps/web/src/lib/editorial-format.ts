@@ -50,9 +50,44 @@ export interface StructuredCopy {
   estimatedDuration?: string;   // vídeo/motion
   sections?: CopySection[];     // vídeo/motion (Gancho, Conexão, Desenvolvimento, Virada, CTA)
   slides?: CopySlide[];         // carrossel
+  slideCount?: number;          // carrossel — quantidade de telas definida pelo usuário (2–8)
   static?: StaticCopy;          // estático
 }
 
 export function isStructuredCopy(v: unknown): v is StructuredCopy {
   return Boolean(v) && typeof v === "object" && !Array.isArray(v) && "format" in (v as Record<string, unknown>);
+}
+
+// ── Configuração individual de telas por carrossel ──────────────────────────
+export const CAROUSEL_MIN_SLIDES = 2;
+export const CAROUSEL_MAX_SLIDES = 8;
+export const CAROUSEL_DEFAULT_SLIDES = 5;
+
+/** Uma configuração por carrossel (índice + quantidade obrigatória de telas). */
+export interface CarouselConfig { index: number; slideCount: number }
+
+/** Garante inteiro dentro de [2,8] (padrão 5 quando inválido). */
+export function clampSlideCount(n: unknown): number {
+  const v = Math.round(Number(n));
+  if (!Number.isFinite(v)) return CAROUSEL_DEFAULT_SLIDES;
+  return Math.min(CAROUSEL_MAX_SLIDES, Math.max(CAROUSEL_MIN_SLIDES, v));
+}
+
+/** Ajusta a lista de contagens de telas ao número de carrosséis: preserva as
+ * existentes, novas recebem o padrão e as excedentes são removidas. */
+export function reconcileCarouselSlides(current: number[], carouselCount: number): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < Math.max(0, carouselCount); i++) {
+    out.push(clampSlideCount(current[i] ?? CAROUSEL_DEFAULT_SLIDES));
+  }
+  return out;
+}
+
+/** Deriva o slideCount efetivo de uma copy de carrossel (compat. com dados
+ * antigos sem o campo: usa o nº de telas presentes). */
+export function effectiveSlideCount(copy: StructuredCopy | undefined | null): number | undefined {
+  if (!copy) return undefined;
+  if (typeof copy.slideCount === "number") return clampSlideCount(copy.slideCount);
+  if (Array.isArray(copy.slides) && copy.slides.length > 0) return copy.slides.length;
+  return undefined;
 }

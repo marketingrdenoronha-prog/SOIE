@@ -550,6 +550,8 @@ export interface ThemeRewriteResult {
 export async function rewriteEditorialTheme(
   input: {
     instructions: string;
+    /** Se for carrossel, quantidade OBRIGATÓRIA de telas a manter (2–8). */
+    slideCount?: number;
     theme: {
       title?: unknown; format?: unknown; channel?: unknown;
       strategicObjective?: unknown; hook?: unknown; cta?: unknown;
@@ -588,7 +590,7 @@ export async function rewriteEditorialTheme(
     "Devolva o TEMA COMPLETO já ajustado, com as chaves: \"title\", \"format\" (Vídeo|Motion|Carrossel|Estático), \"channel\", \"strategicObjective\", \"hook\", \"cta\", \"productionNotes\", \"copy\".",
     "REGRAS DE `copy` por formato (mantenha o formato atual, a menos que as instruções mandem trocar — nesse caso gere a copy no NOVO formato):",
     "• Vídeo/Motion: copy = { \"format\":\"video\"|\"motion\", \"estimatedDuration\", \"sections\":[{label,text}] } com as 5 partes (Gancho, Conexão, Desenvolvimento, Virada, CTA) em narração completa (mín. ~130 palavras).",
-    "• Carrossel: copy = { \"format\":\"carrossel\", \"slides\":[{title,text}] } com NO MÁXIMO 4 telas. É um ROTEIRO conectado (não frases soltas): Tela 1 curiosidade/tensão, Tela 2 aprofunda o problema (por que acontece), Tela 3 consequências/impactos reais, Tela 4 solução + CTA. Fórmula: Curiosidade → Contexto → Consequência → Solução. Cada `text` desenvolvido (3–6 frases, ~45–90 palavras) com contexto, explicação, consequência e ponte para a próxima tela; cada tela entrega algo novo. Proibido frase de efeito solta.",
+    "• Carrossel: copy = { \"format\":\"carrossel\", \"slideCount\": N, \"slides\":[{title,text}] } com EXATAMENTE N telas (a quantidade indicada abaixo). NÃO mude a quantidade de telas, a menos que as instruções manuais peçam explicitamente. É um ROTEIRO conectado (não frases soltas): abertura (gancho/tensão) → desenvolvimento(s) (por que acontece, consequências, prova) → fechamento (solução + CTA), distribuído nas N telas. Cada `text` desenvolvido (3–6 frases, ~45–90 palavras) com contexto, explicação, consequência e ponte para a próxima tela; cada tela entrega algo novo. Proibido frase de efeito solta e proibido tela vazia. `slides.length` DEVE ser igual a `slideCount`.",
     "• Estático: copy = { \"format\":\"estatico\", \"static\":{ headline, subheadline, body, caption, cta, designNotes } }. Arte enxuta; `caption` (legenda) desenvolvida e estratégica (4–7 frases).",
     "Responda EXCLUSIVAMENTE com JSON válido do tema, em pt-BR, sem markdown.",
   ].join("\n");
@@ -596,6 +598,7 @@ export async function rewriteEditorialTheme(
   const user = [
     input.clientName ? `Cliente: ${input.clientName}` : "",
     input.niche ? `Mercado/nicho: ${input.niche}` : "",
+    input.slideCount ? `QUANTIDADE OBRIGATÓRIA DE TELAS (carrossel): ${input.slideCount} — o array slides deve ter exatamente ${input.slideCount} itens e slideCount=${input.slideCount}.` : "",
     "",
     "CONTEÚDO ATUAL (JSON):",
     JSON.stringify(input.theme),
