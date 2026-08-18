@@ -1,0 +1,661 @@
+<title>SOIE — Sistema Operacional de Inteligência Editorial</title>
+<style>
+  :root {
+    --surface: #FAFAFA; --elevated: #FFFFFF; --border: #E2E2E6;
+    --muted: #71717A; --fg: #18181B; --brand: #4F46E5; --brand-soft: #4F46E51a;
+    --ok: #059669; --ok-soft: #05966915; --warn: #D97706; --warn-soft: #D9770615;
+    --crit: #E11D48; --crit-soft: #E11D4815; --info: #0284C7; --info-soft: #0284C715;
+    --violet: #7C3AED; --violet-soft: #7C3AED15;
+    --radius: 12px; --shadow: 0 8px 24px -12px rgba(0,0,0,.25);
+    --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --surface: #0C0C0E; --elevated: #18181B; --border: #27272A;
+      --muted: #A1A1AA; --fg: #F4F4F5; --brand: #818CF8; --brand-soft: #818CF81f;
+      --ok: #34D399; --ok-soft: #34D39918; --warn: #FBBF24; --warn-soft: #FBBF2418;
+      --crit: #FB7185; --crit-soft: #FB718518; --info: #38BDF8; --info-soft: #38BDF818;
+      --violet: #A78BFA; --violet-soft: #A78BFA18; --shadow: 0 8px 28px -10px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --surface: #0C0C0E; --elevated: #18181B; --border: #27272A;
+    --muted: #A1A1AA; --fg: #F4F4F5; --brand: #818CF8; --brand-soft: #818CF81f;
+    --ok: #34D399; --ok-soft: #34D39918; --warn: #FBBF24; --warn-soft: #FBBF2418;
+    --crit: #FB7185; --crit-soft: #FB718518; --info: #38BDF8; --info-soft: #38BDF818;
+    --violet: #A78BFA; --violet-soft: #A78BFA18; --shadow: 0 8px 28px -10px rgba(0,0,0,.6);
+  }
+  :root[data-theme="light"] {
+    --surface: #FAFAFA; --elevated: #FFFFFF; --border: #E2E2E6;
+    --muted: #71717A; --fg: #18181B; --brand: #4F46E5; --brand-soft: #4F46E51a;
+    --ok: #059669; --ok-soft: #05966915; --warn: #D97706; --warn-soft: #D9770615;
+    --crit: #E11D48; --crit-soft: #E11D4815; --info: #0284C7; --info-soft: #0284C715;
+    --violet: #7C3AED; --violet-soft: #7C3AED15; --shadow: 0 8px 24px -12px rgba(0,0,0,.25);
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--surface); color: var(--fg); font-family: var(--font); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  h1,h2,h3,p { margin: 0; }
+  a { color: inherit; text-decoration: none; }
+  button { font-family: inherit; cursor: pointer; }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  .app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+
+  /* Sidebar */
+  .sidebar { background: var(--elevated); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; }
+  .brand { display: flex; align-items: center; gap: 8px; height: 56px; padding: 0 20px; border-bottom: 1px solid var(--border); }
+  .brand .logo { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--brand); color: #fff; font-weight: 700; }
+  .brand .name { font-weight: 600; letter-spacing: -.01em; }
+  .nav { flex: 1; overflow-y: auto; padding: 16px 12px; }
+  .nav-group { margin-bottom: 20px; }
+  .nav-group > p { padding: 0 8px 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px; font-size: 14px; color: color-mix(in srgb, var(--fg) 80%, transparent); background: none; border: none; width: 100%; text-align: left; transition: background .12s; }
+  .nav-item:hover { background: color-mix(in srgb, var(--border) 50%, transparent); }
+  .nav-item.active { background: var(--brand-soft); color: var(--brand); font-weight: 500; }
+  .nav-item .ico { width: 16px; text-align: center; color: var(--muted); }
+  .nav-item.active .ico { color: var(--brand); }
+
+  /* Topbar */
+  .main { display: flex; flex-direction: column; min-width: 0; }
+  .topbar { display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 16px; border-bottom: 1px solid var(--border); background: var(--elevated); position: sticky; top: 0; z-index: 20; }
+  .crumbs { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
+  .crumbs .sel { padding: 4px 8px; border-radius: 6px; }
+  .crumbs .sel:hover { background: color-mix(in srgb, var(--border) 50%, transparent); }
+  .crumbs .div { color: var(--border); }
+  .top-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .search { width: 240px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--fg); font-size: 14px; outline: none; }
+  .search::placeholder { color: var(--muted); }
+  .search:focus { border-color: var(--brand); }
+  .icon-btn { position: relative; display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--border); border-radius: 8px; background: var(--elevated); color: var(--fg); }
+  .icon-btn:hover { background: color-mix(in srgb, var(--border) 40%, transparent); }
+  .badge { position: absolute; top: -5px; right: -5px; min-width: 16px; height: 16px; padding: 0 4px; display: grid; place-items: center; border-radius: 999px; background: var(--crit); color: #fff; font-size: 10px; font-weight: 700; }
+  .btn { padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; border: 1px solid transparent; }
+  .btn-primary { background: var(--brand); color: #fff; }
+  .btn-primary:hover { opacity: .92; }
+  .btn-ghost { background: var(--elevated); border-color: var(--border); color: var(--fg); }
+  .btn-ghost:hover { background: color-mix(in srgb, var(--border) 40%, transparent); }
+  .btn-ok { background: var(--ok); color: #fff; }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+
+  /* Content */
+  .content { padding: 28px 24px 64px; }
+  .wrap { max-width: 1040px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+  .page-head h1 { font-size: 22px; font-weight: 650; letter-spacing: -.02em; }
+  .page-head p { color: var(--muted); margin-top: 4px; font-size: 14px; }
+
+  .card { background: var(--elevated); border: 1px solid var(--border); border-radius: var(--radius); }
+  .card-p { padding: 20px; }
+  .card h2 { font-size: 14px; font-weight: 600; }
+  .grid { display: grid; gap: 16px; }
+  .g2 { grid-template-columns: repeat(2, 1fr); }
+  .g3 { grid-template-columns: repeat(3, 1fr); }
+  .g4 { grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 860px) { .g3, .g4 { grid-template-columns: repeat(2, 1fr); } .app { grid-template-columns: 1fr; } .sidebar { display: none; } }
+
+  .label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .muted { color: var(--muted); }
+  .sub { font-size: 12px; color: var(--muted); }
+  .pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 500; }
+  .p-brand { background: var(--brand-soft); color: var(--brand); }
+  .p-ok { background: var(--ok-soft); color: var(--ok); }
+  .p-warn { background: var(--warn-soft); color: var(--warn); }
+  .p-crit { background: var(--crit-soft); color: var(--crit); }
+  .p-info { background: var(--info-soft); color: var(--info); }
+  .p-violet { background: var(--violet-soft); color: var(--violet); }
+  .p-muted { background: color-mix(in srgb, var(--border) 60%, transparent); color: var(--muted); }
+
+  .tile { background: var(--elevated); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+  .tile .k { font-size: 12px; color: var(--muted); font-weight: 500; }
+  .tile .v { font-size: 26px; font-weight: 700; letter-spacing: -.02em; margin-top: 6px; }
+  .tile .d { font-size: 12px; margin-top: 4px; }
+
+  .item { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .list > * + * { border-top: 1px solid var(--border); }
+  .list .li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; }
+
+  .col-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .add-btn { border: 1px solid var(--border); background: none; color: var(--fg); border-radius: 8px; padding: 4px 10px; font-size: 12px; font-weight: 500; }
+  .add-btn:hover { background: var(--surface); }
+  .empty { border: 1px dashed var(--border); border-radius: 10px; padding: 14px; color: var(--muted); font-size: 13px; }
+
+  input.f, select.f, textarea.f { width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--fg); font-size: 14px; font-family: inherit; outline: none; }
+  input.f:focus, select.f:focus, textarea.f:focus { border-color: var(--brand); }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+
+  .scene { border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+  .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; vertical-align: middle; }
+
+  .screen { display: none; }
+  .screen.active { display: block; }
+
+  /* Full-screen public pages (login/register/review) */
+  .app.fullscreen .sidebar, .app.fullscreen .topbar { display: none; }
+  .app.fullscreen { grid-template-columns: 1fr; }
+  .app.fullscreen .content { padding: 0; }
+  .app.fullscreen .wrap { max-width: none; }
+  .auth-wrap { min-height: 100vh; display: grid; place-items: center; padding: 32px 16px; background: var(--surface); }
+  .auth-card { width: 100%; max-width: 400px; background: var(--elevated); border: 1px solid var(--border); border-radius: 16px; padding: 32px; box-shadow: var(--shadow); }
+  .auth-brand { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }
+  .auth-brand .logo { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--brand); color: #fff; font-weight: 700; }
+  .auth-brand .name { font-weight: 600; }
+  .auth-title { font-size: 22px; font-weight: 650; letter-spacing: -.02em; }
+  .auth-sub { color: var(--muted); margin-top: 4px; }
+  .auth-alt { text-align: center; margin-top: 16px; font-size: 13px; color: var(--muted); }
+  .auth-alt a { color: var(--brand); font-weight: 500; cursor: pointer; }
+  .review-wrap { min-height: 100vh; background: var(--surface); }
+  .review-top { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); background: var(--elevated); position: sticky; top: 0; }
+  .review-body { max-width: 640px; margin: 0 auto; padding: 28px 20px 64px; }
+  .back-fab { position: fixed; top: 14px; left: 16px; z-index: 60; background: var(--elevated); border: 1px solid var(--border); box-shadow: var(--shadow); border-radius: 999px; padding: 7px 14px; font-size: 13px; color: var(--fg); display: none; }
+  .app.fullscreen ~ .back-fab { display: block; }
+
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 9px; padding: 3px; gap: 3px; }
+  .seg button { border: none; background: none; color: var(--muted); padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; }
+  .seg button.on { background: var(--brand); color: #fff; }
+
+  .dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
+
+  .bar-track { height: 8px; border-radius: 999px; background: color-mix(in srgb, var(--border) 70%, transparent); overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--brand); border-radius: 999px; }
+
+  .kv { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .kv:last-child { border-bottom: none; }
+
+  .banner { background: var(--brand-soft); border: 1px solid color-mix(in srgb, var(--brand) 30%, transparent); border-radius: 10px; padding: 12px 14px; font-size: 13px; }
+  .note { font-size: 12px; color: var(--muted); }
+  .demo-tag { position: fixed; bottom: 14px; right: 16px; z-index: 50; background: var(--elevated); border: 1px solid var(--border); box-shadow: var(--shadow); border-radius: 999px; padding: 7px 14px; font-size: 12px; color: var(--muted); }
+  .demo-tag b { color: var(--fg); }
+</style>
+
+<div class="app">
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">S</span><span class="name">SOIE</span></div>
+    <nav class="nav" id="nav"></nav>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <div class="main">
+    <header class="topbar">
+      <div class="crumbs">
+        <span class="sel">Beam Agência ▾</span><span class="div">/</span>
+        <span class="sel" id="crumbClient">Paradise ▾</span><span class="div">/</span>
+        <span class="sel" id="crumbProject">Gateway 2026 ▾</span>
+      </div>
+      <div class="top-actions">
+        <input class="search" placeholder="Buscar clientes, marcas, entregas…" />
+        <button class="icon-btn" id="themeBtn" title="Alternar tema">☾</button>
+        <button class="icon-btn" title="Notificações">🔔<span class="badge">3</span></button>
+        <button class="btn btn-ghost btn-sm">Sair</button>
+      </div>
+    </header>
+
+    <div class="content"><div class="wrap" id="screens"></div></div>
+  </div>
+</div>
+
+<button class="back-fab" id="backFab">← Voltar ao app</button>
+<div class="demo-tag" id="demoTag">Protótipo estático — <b>SOIE</b> · frontend completo em 1 arquivo</div>
+
+<script>
+const NAV = [
+  { g:"Trabalho", items:[
+    ["dashboard","Dashboard","◱"],["clients","Clientes","◫"],["deliverables","Entregas","✎"],["calendar","Calendário","▦"] ]},
+  { g:"Inteligência", items:[
+    ["market","Mercado","◈"],["audience","Audiência","◉"],["dna","DNA da Marca","❖"],["editorial","Linha Editorial","☰"],["memory","Memória","❋"],["library","Biblioteca","▤"] ]},
+  { g:"IA", items:[ ["ai","Agentes & Execuções","✦"],["reports","Relatórios","◭"] ]},
+  { g:"Admin", items:[ ["import","Importar base","⇪"],["settings","Configurações","⚙"] ]},
+  { g:"Telas públicas", items:[ ["login","Login","→"],["register","Criar conta","＋"],["review","Revisão do cliente","◎"] ]},
+];
+// Telas que ocupam a viewport inteira (sem sidebar/topbar), como no app real.
+const FULLSCREEN = new Set(["login","register","review"]);
+
+const H = (s) => s; // passthrough for readability
+
+// ---------- Screens ----------
+const SCREENS = {
+dashboard: `
+  <div class="page-head"><h1>Dashboard</h1><p>Visão geral da operação editorial da Beam Agência.</p></div>
+  <div class="grid g4">
+    <div class="tile"><div class="k">Clientes ativos</div><div class="v tnum">22</div><div class="d p-ok" style="display:inline-block">+3 este mês</div></div>
+    <div class="tile"><div class="k">Entregas no mês</div><div class="v tnum">148</div><div class="d muted">31 aguardando cliente</div></div>
+    <div class="tile"><div class="k">Taxa de aprovação</div><div class="v tnum">86%</div><div class="d muted">1ª rodada</div></div>
+    <div class="tile"><div class="k">Custo de IA</div><div class="v tnum">US$ 42,10</div><div class="d muted">mês corrente</div></div>
+  </div>
+  <div class="grid g3">
+    <div class="card card-p" style="grid-column: span 2">
+      <div class="col-head"><h2>Atividade recente</h2><span class="sub">últimas 24h</span></div>
+      <div class="list">
+        ${[
+          ["Paradise","Roteiro de vídeo aprovado pelo cliente","p-ok","aprovado","2h"],
+          ["JumpFy","Carrossel enviado para revisão do cliente","p-warn","com o cliente","4h"],
+          ["Dra Carolina","Linha editorial gerada (4 pilares)","p-brand","editorial","6h"],
+          ["Átomo Pay","Ajuste pedido: gancho mais direto","p-crit","ajuste","8h"],
+          ["Connect Store","Sequência de e-mail em revisão interna","p-violet","interno","10h"],
+        ].map(([c,t,cls,tag,when])=>`
+          <div class="li"><div><p style="font-weight:500">${c}</p><p class="sub">${t}</p></div>
+          <div class="row" style="gap:10px"><span class="pill ${cls}">${tag}</span><span class="sub tnum">${when}</span></div></div>`).join("")}
+      </div>
+    </div>
+    <div class="card card-p">
+      <div class="col-head"><h2>Fila de produção</h2></div>
+      ${[["Gerando",2,"p-info"],["Revisão interna",5,"p-violet"],["Com o cliente",31,"p-warn"],["Aprovadas",108,"p-ok"],["Ajuste pedido",2,"p-crit"]].map(([l,n,cls])=>`
+        <div class="li" style="border-top:1px solid var(--border)"><span class="pill ${cls}">${l}</span><span class="tnum" style="font-weight:600">${n}</span></div>`).join("")}
+    </div>
+  </div>`,
+
+clients: `
+  <div class="page-head"><h1>Clientes</h1><p>Cliente → Marca → Projeto. Os módulos de IA operam sobre um projeto.</p></div>
+  <div class="grid g3">
+    <section class="card card-p">
+      <div class="col-head"><h2>Clientes (22)</h2><button class="add-btn">+ Adicionar</button></div>
+      <div class="grid" style="gap:8px">
+        ${[["Paradise","Gateway de pagamento"],["JumpFy","Gateway de pagamento"],["Átomo Pay","Intermediação p/ afiliados"],["Dra Carolina","Odontologia"],["Connect Store","Apple + games + AT"],["Sinibaldi","Oficina mecânica"]].map(([n,i])=>`
+          <div class="item row"><div><p style="font-weight:500">${n}</p><p class="sub">${i}</p></div>
+          <div class="row" style="gap:4px"><button class="icon-btn btn-sm" style="width:26px;height:26px">✎</button><button class="icon-btn btn-sm" style="width:26px;height:26px">🗄</button></div></div>`).join("")}
+        <p class="note">+ 16 clientes…</p>
+      </div>
+    </section>
+    <section class="card card-p">
+      <div class="col-head"><h2>Marcas (22)</h2><button class="add-btn">+ Adicionar</button></div>
+      <div class="grid" style="gap:8px">
+        ${[["Paradise","Paradise"],["JumpFy","JumpFy"],["Dra Carolina","Dra Carolina Odonto"]].map(([c,b])=>`
+          <div class="item"><p style="font-weight:500">${b}</p><p class="sub">${c}</p></div>`).join("")}
+        <p class="note">+ 19 marcas…</p>
+      </div>
+    </section>
+    <section class="card card-p">
+      <div class="col-head"><h2>Projetos (24)</h2><button class="add-btn">+ Adicionar</button></div>
+      <div class="grid" style="gap:8px">
+        ${[["Gateway 2026","Paradise","production"],["Aquisição afiliados","JumpFy","production"],["Alinhadores Q3","Dra Carolina","draft"]].map(([n,b,s])=>`
+          <div class="item"><p style="font-weight:500">${n}</p><p class="sub">${b}</p><span class="pill p-brand" style="margin-top:6px">${s}</span></div>`).join("")}
+        <p class="note">+ 21 projetos…</p>
+      </div>
+    </section>
+  </div>`,
+
+deliverables: `
+  <div class="page-head"><h1>Entregas</h1><p>Gere um roteiro por canal e receba um link para o cliente aprovar.</p></div>
+  <div class="card card-p">
+    <div class="row" style="margin-bottom:12px"><h2>Gerar entrega</h2>
+      <div class="seg"><button class="on">Projeto existente</button><button>Novo cliente</button></div></div>
+    <div class="grid g4">
+      <div class="field"><span class="label">Projeto</span><select class="f"><option>Paradise · Gateway 2026</option><option>JumpFy · Aquisição afiliados</option></select></div>
+      <div class="field"><span class="label">Canal</span><select class="f"><option>Instagram</option><option>TikTok</option><option>YouTube</option></select></div>
+      <div class="field"><span class="label">Formato</span><select class="f"><option>Roteiro de vídeo</option><option>Carrossel</option><option>Copy</option></select></div>
+      <div class="field"><span class="label">Briefing</span><input class="f" placeholder="opcional"></div>
+    </div>
+    <button class="btn btn-primary" style="margin-top:16px">Gerar e criar link do cliente</button>
+  </div>
+
+  <!-- Deliverable card -->
+  <div class="card">
+    <div class="row" style="padding:16px 16px 14px; border-bottom:1px solid var(--border); flex-wrap:wrap; gap:10px">
+      <div><p style="font-weight:600">Reels Instagram — Paradise <span class="sub">v2</span></p><p class="sub">instagram · video_script</p></div>
+      <span class="pill p-warn">Com o cliente</span>
+      <div class="row" style="margin-left:auto; gap:8px; flex-wrap:wrap">
+        <button class="btn btn-ghost btn-sm">Regerar com feedback</button>
+        <button class="btn btn-ghost btn-sm">Abrir link ↗</button>
+        <button class="btn btn-primary btn-sm">Copiar link</button>
+      </div>
+    </div>
+    <div class="grid" style="grid-template-columns: 2fr 1fr; gap:0">
+      <div class="card-p" style="display:flex;flex-direction:column;gap:14px">
+        <div><span class="label">Gancho (0–3s)</span><p style="font-weight:600;margin-top:4px">Você está perdendo dinheiro em cada venda sem saber?</p></div>
+        ${[["1","3s","Close no rosto, corte seco","Se você aceita cartão, para agora.","PARE"],
+           ["2","6s","Tela do checkout","A taxa escondida come sua margem.","A taxa oculta"],
+           ["3","8s","Dashboard Paradise","Com a Paradise você vê tudo e paga menos.","-1,2% por venda"],
+           ["4","4s","CTA final","Comenta 'QUERO' que eu te mostro.","QUERO 👇"]].map(([n,s,v,vo,t])=>`
+          <div class="scene"><div class="row"><span class="pill p-brand">Cena ${n}</span><span class="sub tnum">${s}</span></div>
+          <p style="margin-top:6px"><span class="muted">Visual:</span> ${v}</p>
+          <p><span class="muted">Narração:</span> ${vo}</p>
+          <p><span class="muted">Texto na tela:</span> ${t}</p></div>`).join("")}
+        <div><span class="label">CTA</span><p style="margin-top:4px">Comenta 'QUERO' para receber a simulação de taxas.</p></div>
+        <div><span class="label">Hashtags</span><p style="margin-top:4px" class="muted">#gateway #meiosdepagamento #paradise</p></div>
+      </div>
+      <div class="card-p" style="border-left:1px solid var(--border)">
+        <span class="label">Feedback do cliente</span>
+        <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px">
+          <div class="item"><span class="p-ok pill">✓ Aprovado</span><p class="sub" style="margin-top:6px">Ficou ótimo, pode seguir.</p><p class="sub">— Marco (Paradise)</p></div>
+          <div class="item"><span class="p-warn pill">✎ Ajuste</span><p class="sub" style="margin-top:6px">Deixar o CTA mais direto.</p><p class="sub">— Marco (Paradise)</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="padding:16px; flex-wrap:wrap; gap:10px">
+      <div><p style="font-weight:600">Carrossel — JumpFy</p><p class="sub">instagram · carousel</p></div>
+      <span class="pill p-violet">Revisão interna</span>
+      <div class="row" style="margin-left:auto; gap:8px">
+        <button class="btn btn-ok btn-sm">Aprovar e enviar ao cliente</button>
+        <button class="btn btn-ghost btn-sm">Regerar</button>
+      </div>
+    </div>
+  </div>`,
+
+calendar: `
+  <div class="page-head"><h1>Calendário</h1><p>Planejamento editorial no tempo, gerado a partir da linha editorial.</p></div>
+  <div class="card card-p">
+    <div class="row"><h2>Gerar calendário do projeto</h2></div>
+    <div class="row" style="gap:12px; margin-top:12px; flex-wrap:wrap">
+      <select class="f" style="max-width:320px"><option>Paradise · Gateway 2026</option></select>
+      <button class="btn btn-primary">Gerar calendário</button>
+    </div>
+    <p class="note" style="margin-top:8px">Distribui os temas da linha editorial nas próximas semanas (seg/qua/sex).</p>
+  </div>
+  <div class="card card-p">
+    <p style="font-weight:600">Calendário — Paradise</p><p class="sub">Paradise · Gateway 2026</p>
+    <div class="list" style="margin-top:10px">
+      ${[["seg 06/07","Mitos e verdades: 3 erros ao escolher gateway","instagram","planned"],
+         ["qua 08/07","Como funciona: passo a passo do onboarding","tiktok","planned"],
+         ["sex 10/07","Cases: antes e depois de um e-commerce","instagram","planned"],
+         ["seg 13/07","Bastidores de uma integração","instagram","planned"],
+         ["qua 15/07","Oferta: simulação de taxas com garantia","meta_ads","planned"]].map(([d,t,p,s])=>`
+        <div class="li"><div><span class="muted tnum">${d}</span><span style="margin-left:8px">${t}</span></div>
+        <div class="row" style="gap:8px"><span class="pill p-muted">${p}</span><span class="pill p-brand">${s}</span></div></div>`).join("")}
+    </div>
+  </div>`,
+
+market: `
+  <div class="page-head"><h1>Mercado</h1><p>Análise de mercado e concorrência para o projeto selecionado.</p></div>
+  <div class="row"><span class="pill p-brand">Paradise · Gateway 2026</span><button class="btn btn-primary btn-sm" style="margin-left:auto">Rodar análise</button></div>
+  <div class="banner">Mercado de meios de pagamento aquecido: a disputa é por confiança e transparência de taxas, não só preço. Há espaço para uma marca que mostra prova de economia real.</div>
+  <div class="grid g2">
+    ${[["Forças","p-ok",["Taxas transparentes","Onboarding rápido","Suporte próximo"]],
+       ["Fraquezas","p-crit",["Marca pouco conhecida","Poucos cases públicos"]],
+       ["Oportunidades","p-info",["Conteúdo educativo sobre taxas","Nichar por e-commerce","Parcerias com ERPs"]],
+       ["Ameaças","p-warn",["Concorrentes com mais volume","Guerra de preço"]]].map(([t,cls,arr])=>`
+      <div class="card card-p"><span class="pill ${cls}">${t}</span>
+      <ul style="margin:10px 0 0; padding-left:18px; display:flex; flex-direction:column; gap:4px">${arr.map(x=>`<li>${x}</li>`).join("")}</ul></div>`).join("")}
+  </div>
+  <div class="card card-p">
+    <h2>Concorrentes</h2>
+    <div class="list" style="margin-top:8px">
+      ${[["Concorrente A","Líder em volume, comunicação genérica","Alcance, reconhecimento","Impessoal, pouca prova"],
+         ["Concorrente B","Preço baixo como apelo","Entrada acessível","Percepção de baixo valor"],
+         ["Concorrente C","Nichado e técnico","Autoridade no nicho","Comunicação difícil"]].map(([n,pos,s,w])=>`
+        <div class="li" style="align-items:flex-start"><div><p style="font-weight:500">${n}</p><p class="sub">${pos}</p></div>
+        <div style="text-align:right; max-width:50%"><p class="sub"><span class="p-ok" style="font-weight:600">Força:</span> ${s}</p><p class="sub"><span class="p-crit" style="font-weight:600">Fraqueza:</span> ${w}</p></div></div>`).join("")}
+    </div>
+  </div>`,
+
+audience: `
+  <div class="page-head"><h1>Audiência</h1><p>Personas com dores, objeções e desejos — base para todo conteúdo.</p></div>
+  <div class="row"><span class="pill p-brand">Paradise · Gateway 2026</span><button class="btn btn-primary btn-sm" style="margin-left:auto">Gerar persona</button></div>
+  <div class="card card-p">
+    <div class="row"><div><h2>Dono de e-commerce em crescimento</h2><p class="sub">28–45 · Brasil urbano · renda média-alta</p></div><span class="pill p-info">problem aware</span></div>
+    <div class="grid g3" style="margin-top:16px">
+      <div><span class="label">Dores</span><div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+        ${[["Taxas corroem a margem sem ele perceber",5],["Medo de trocar e dar problema no checkout",4],["Sem tempo para detalhes técnicos",3]].map(([d,i])=>`
+        <div class="item"><p style="font-size:13px">${d}</p><div class="row" style="margin-top:6px"><div class="bar-track" style="flex:1"><div class="bar-fill" style="width:${i*20}%"></div></div><span class="sub tnum">${i}/5</span></div></div>`).join("")}</div></div>
+      <div><span class="label">Objeções</span><div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+        ${[["\"Será confiável?\"","Mostrar cases e certificações logo no início"],["\"Vai dar trabalho migrar\"","Onboarding assistido em 48h"]].map(([o,c])=>`
+        <div class="item"><p style="font-size:13px;font-weight:500">${o}</p><p class="sub" style="margin-top:4px">→ ${c}</p></div>`).join("")}</div></div>
+      <div><span class="label">Desejos</span><div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+        ${[["Sentir que está em boas mãos",5],["Ver economia real no fim do mês",5]].map(([d,i])=>`
+        <div class="item"><p style="font-size:13px">${d}</p><div class="row" style="margin-top:6px"><div class="bar-track" style="flex:1"><div class="bar-fill" style="width:${i*20}%"></div></div><span class="sub tnum">${i}/5</span></div></div>`).join("")}</div></div>
+    </div>
+  </div>`,
+
+dna: `
+  <div class="page-head"><h1>DNA da Marca</h1><p>Voz, arquétipos e vocabulário que todo agente respeita ao escrever.</p></div>
+  <div class="row"><span class="pill p-brand">Paradise</span><button class="btn btn-primary btn-sm" style="margin-left:auto">Gerar DNA</button></div>
+  <div class="grid g2">
+    <div class="card card-p"><span class="label">Tom de voz</span><p style="margin-top:6px">Próxima, segura e direta. Fala como especialista que respeita o tempo do cliente.</p>
+      <div class="row" style="gap:6px;margin-top:10px"><span class="pill p-muted">confiante</span><span class="pill p-muted">acessível</span><span class="pill p-muted">objetiva</span></div></div>
+    <div class="card card-p"><span class="label">Arquétipos</span>
+      ${[["Sábio",60,"Autoridade que educa"],["Herói",40,"Resolve e entrega a vitória"]].map(([a,w,r])=>`
+      <div style="margin-top:10px"><div class="row"><span style="font-weight:500">${a}</span><span class="sub tnum">${w}%</span></div>
+      <div class="bar-track" style="margin-top:4px"><div class="bar-fill" style="width:${w}%"></div></div><p class="sub" style="margin-top:2px">${r}</p></div>`).join("")}</div>
+    <div class="card card-p"><span class="label" style="color:var(--ok)">Fazer</span>
+      <ul style="margin:8px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:4px">${["Falar em resultado e economia","Usar prova concreta","Frases curtas e claras"].map(x=>`<li>${x}</li>`).join("")}</ul></div>
+    <div class="card card-p"><span class="label" style="color:var(--crit)">Evitar</span>
+      <ul style="margin:8px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:4px">${["Prometer o impossível","Jargão sem explicar","Falar de si mais que do cliente"].map(x=>`<li>${x}</li>`).join("")}</ul></div>
+  </div>
+  <div class="card card-p"><span class="label">Vocabulário</span>
+    <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">
+      ${[["usar","economia","p-ok"],["usar","transparência","p-ok"],["usar","prova","p-ok"],["evitar","barato","p-crit"],["evitar","complicado","p-crit"]].map(([k,t,cls])=>`<span class="pill ${cls}">${k}: ${t}</span>`).join("")}
+    </div>
+  </div>`,
+
+editorial: `
+  <div class="page-head"><h1>Linha Editorial</h1><p>Pilares e linhas que organizam toda a produção do projeto.</p></div>
+  <div class="row"><span class="pill p-brand">Paradise · Gateway 2026</span><button class="btn btn-primary btn-sm" style="margin-left:auto">Gerar estratégia</button></div>
+  <div class="card card-p"><span class="label">Posicionamento</span><p style="margin-top:6px">Paradise: a escolha segura em meios de pagamento, para quem quer economia sem dor de cabeça.</p>
+    <div class="row" style="gap:6px;margin-top:10px;flex-wrap:wrap">${["Autoridade","Prova","Conexão","Conversão"].map(p=>`<span class="pill p-brand">${p}</span>`).join("")}</div></div>
+  <div class="grid g3">
+    ${[["Autoridade","tofu","p-info",[["Mitos e verdades",["3 erros ao escolher gateway","O que ninguém conta sobre taxas"]],["Como funciona",["Passo a passo do onboarding"]]]],
+       ["Prova","mofu","p-violet",[["Cases",["Antes e depois de um e-commerce","Bastidores de uma integração"]]]],
+       ["Conversão","bofu","p-ok",[["Oferta",["Simulação de taxas com garantia"]]]]].map(([n,f,cls,cats])=>`
+      <div class="card card-p"><div class="row"><span style="font-weight:600">${n}</span><span class="pill ${cls}">${f}</span></div>
+      ${cats.map(([cn,themes])=>`<div style="margin-top:10px"><p class="label">${cn}</p>
+        <ul style="margin:4px 0 0;padding-left:16px" class="sub">${themes.map(t=>`<li>${t}</li>`).join("")}</ul></div>`).join("")}</div>`).join("")}
+  </div>`,
+
+memory: `
+  <div class="page-head"><h1>Memória</h1><p>Regras curadas que a IA sempre puxa antes de gerar qualquer peça.</p></div>
+  <div class="card card-p">
+    <div class="field"><span class="label">Nova memória</span>
+      <textarea class="f" rows="2" placeholder="Ex.: Sempre falar em 'você'. Nunca prometer resultado garantido. Foco em economia de taxa."></textarea></div>
+    <button class="btn btn-primary btn-sm" style="margin-top:10px">Adicionar</button>
+  </div>
+  <div class="card card-p"><h2>Memórias ativas (5)</h2>
+    <div class="list" style="margin-top:8px">
+      ${["Sempre falar em 'você', tom próximo e direto.","Nunca prometer 'aprovação garantida' — usar 'análise ágil'.","Ancorar valor em economia de taxa, não em preço baixo.","Citar segurança/PCI quando falar de checkout.","Todo conteúdo termina com 1 CTA claro."].map(m=>`
+        <div class="li"><span>${m}</span><button class="icon-btn btn-sm" style="width:26px;height:26px">🗑</button></div>`).join("")}
+    </div>
+  </div>`,
+
+library: `
+  <div class="page-head"><h1>Biblioteca</h1><p>Frameworks, ganchos, templates e roteiros reutilizáveis.</p></div>
+  <div class="seg" data-tabs="lib">
+    <button class="on" data-tab="frameworks">Frameworks</button><button data-tab="hooks">Ganchos</button><button data-tab="templates">Templates</button><button data-tab="scripts">Roteiros</button>
+  </div>
+  <div data-panel="lib" data-name="frameworks" class="grid g2">
+    ${[["AIDA","Atenção → Interesse → Desejo → Ação","Sistema"],["PAS","Problema → Agitação → Solução","Sistema"],["4 U's","Útil, Urgente, Único, Ultraespecífico","Sistema"],["Antes/Depois/Ponte","Estado atual → desejado → como chegar","Beam"]].map(([n,d,o])=>`
+      <div class="card card-p"><div class="row"><h2>${n}</h2><span class="pill ${o==='Sistema'?'p-muted':'p-brand'}">${o}</span></div><p class="sub" style="margin-top:6px">${d}</p></div>`).join("")}
+  </div>
+  <div data-panel="lib" data-name="hooks" class="grid g2" style="display:none">
+    ${[["\"Você está perdendo dinheiro sem saber\"","Curiosidade + perda"],["\"Ninguém te conta isso sobre…\"","Segredo revelado"],["\"3 erros que quase todo mundo comete\"","Lista + erro"],["\"Para de fazer isso agora\"","Comando + urgência"]].map(([h,t])=>`
+      <div class="card card-p"><p style="font-weight:500">${h}</p><p class="sub" style="margin-top:6px">${t}</p></div>`).join("")}
+  </div>
+  <div data-panel="lib" data-name="templates" class="grid g2" style="display:none">
+    ${[["Carrossel educativo","5 slides: erro → 3 causas → solução → CTA"],["Reels de prova","gancho → problema → case → resultado → CTA"],["E-mail de oferta","dor → solução → prova → prazo → CTA"],["Anúncio de tráfego","headline → benefício → prova → ação"]].map(([n,d])=>`
+      <div class="card card-p"><h2>${n}</h2><p class="sub" style="margin-top:6px">${d}</p></div>`).join("")}
+  </div>
+  <div data-panel="lib" data-name="scripts" class="grid g2" style="display:none">
+    ${[["Reels — Paradise","instagram · aprovado"],["Carrossel — JumpFy","instagram · revisão"],["E-mail — Connect Store","email · rascunho"],["Anúncio — Átomo Pay","meta_ads · aprovado"]].map(([n,m])=>`
+      <div class="card card-p"><h2>${n}</h2><p class="sub" style="margin-top:6px">${m}</p></div>`).join("")}
+  </div>`,
+
+ai: `
+  <div class="page-head"><h1>Agentes & Execuções</h1><p>Histórico de execuções dos 16 agentes especialistas, com custo por run.</p></div>
+  <div class="card card-p">
+    <div class="list">
+      <div class="li label" style="padding-bottom:8px"><span>Agente / passo</span><span>Custo · status</span></div>
+      ${[["planning","Linha editorial — Paradise","succeeded","p-ok","US$ 0,012"],
+         ["scriptwriter","Roteiro de vídeo — Paradise","succeeded","p-ok","US$ 0,008"],
+         ["designer","Carrossel — JumpFy","running","p-info","—"],
+         ["market","Análise de mercado — Átomo Pay","succeeded","p-ok","US$ 0,015"],
+         ["critic","Crítica adversarial — Reels","succeeded","p-ok","US$ 0,004"]].map(([a,t,s,cls,c])=>`
+        <div class="li"><div><p style="font-weight:500">${a} <span class="sub">· ${t}</span></p></div>
+        <div class="row" style="gap:10px"><span class="tnum sub">${c}</span><span class="pill ${cls}">${s}</span></div></div>`).join("")}
+    </div>
+  </div>`,
+
+reports: `
+  <div class="page-head"><h1>Relatórios</h1><p>Produção, custo de IA e status das entregas.</p></div>
+  <div class="grid g3">
+    <div class="tile"><div class="k">Projetos</div><div class="v tnum">24</div></div>
+    <div class="tile"><div class="k">Execuções de IA</div><div class="v tnum">312</div></div>
+    <div class="tile"><div class="k">Custo total de IA</div><div class="v tnum">US$ 42,10</div></div>
+  </div>
+  <div class="card card-p"><h2>Entregas por status</h2>
+    <div style="margin-top:12px; display:flex; flex-direction:column; gap:10px">
+      ${[["Aprovadas",108,"var(--ok)"],["Com o cliente",31,"var(--warn)"],["Revisão interna",5,"var(--violet)"],["Ajuste pedido",2,"var(--crit)"],["Gerando",2,"var(--info)"]].map(([l,n,c])=>`
+        <div><div class="row"><span>${l}</span><span class="tnum" style="font-weight:600">${n}</span></div>
+        <div class="bar-track" style="margin-top:4px"><div class="bar-fill" style="width:${n/108*100}%; background:${c}"></div></div></div>`).join("")}
+    </div>
+  </div>`,
+
+import: `
+  <div class="page-head"><h1>Importar base</h1><p>Carregue sua carteira de clientes de uma vez (JSON).</p></div>
+  <div class="card card-p">
+    <div class="field"><span class="label">Colar JSON da base</span>
+      <textarea class="f" rows="5" placeholder='{"clientes": [{ "nome": "Paradise", "nicho": "Gateway de pagamento", ... }]}'></textarea></div>
+    <div class="row" style="gap:8px; margin-top:12px">
+      <button class="btn btn-ghost">Simular (dry-run)</button>
+      <button class="btn btn-primary">Importar</button>
+    </div>
+    <div class="banner" style="margin-top:14px">Prévia: <b>22 clientes</b> → 22 marcas · 22 projetos · 22 DNAs de marca · pilares de conteúdo. Idempotente por nome (não duplica).</div>
+  </div>`,
+
+settings: `
+  <div class="page-head"><h1>Configurações</h1><p>Administração da organização e da sua conta.</p></div>
+  <div class="card card-p"><h2>Organização</h2>
+    <div class="field" style="margin-top:10px"><span class="label">Nome</span>
+      <div class="row" style="gap:8px"><input class="f" value="Beam Agência"><button class="btn btn-primary">Salvar</button></div></div>
+    <div style="margin-top:10px">
+      <div class="kv"><span class="muted">Slug</span><span>beam-agencia</span></div>
+      <div class="kv"><span class="muted">Status</span><span>active</span></div>
+      <div class="kv"><span class="muted">BYOK (chaves próprias de IA)</span><span>Inativo</span></div>
+    </div>
+  </div>
+  <div class="card card-p"><h2>Equipe (3)</h2>
+    <div class="list" style="margin-top:6px">
+      ${[["Marco","marco@beam360.com.br","owner","active"],["Ana","ana@beam360.com.br","editor","active"],["João","joao@beam360.com.br","viewer","active"]].map(([n,e,r,s])=>`
+        <div class="li"><div><p style="font-weight:500">${n}</p><p class="sub">${e}</p></div>
+        <div class="row" style="gap:10px"><span class="pill p-brand">${r}</span><span class="sub" style="color:var(--ok)">${s}</span></div></div>`).join("")}
+    </div>
+  </div>
+  <div class="card card-p"><h2>Trocar senha</h2>
+    <div style="margin-top:10px; display:flex; flex-direction:column; gap:10px; max-width:420px">
+      <div class="field"><span class="label">Senha atual</span><input class="f" type="password" value="••••••••"></div>
+      <div class="field"><span class="label">Nova senha (mín. 8)</span><input class="f" type="password" value="••••••••"></div>
+      <div class="field"><span class="label">Confirmar nova senha</span><input class="f" type="password" value="••••••••"></div>
+      <button class="btn btn-primary" style="align-self:flex-start">Alterar senha</button>
+    </div>
+  </div>`,
+
+login: `
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-brand"><span class="logo">S</span><span class="name">SOIE</span></div>
+      <h1 class="auth-title">Entrar</h1>
+      <p class="auth-sub">Acesse sua agência editorial.</p>
+      <div class="field" style="margin-top:18px"><span class="label">E-mail</span><input class="f" value="marco@beam360.com.br"></div>
+      <div class="field" style="margin-top:12px"><span class="label">Senha</span><input class="f" type="password" value="••••••••••"></div>
+      <button class="btn btn-primary" style="width:100%; margin-top:18px">Entrar</button>
+      <p class="auth-alt">Não tem conta? <a data-goto="register">Criar conta</a></p>
+    </div>
+  </div>`,
+
+register: `
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-brand"><span class="logo">S</span><span class="name">SOIE</span></div>
+      <h1 class="auth-title">Criar conta</h1>
+      <p class="auth-sub">Crie sua organização e comece a produzir.</p>
+      <div class="field" style="margin-top:18px"><span class="label">Nome da agência</span><input class="f" value="Beam Agência"></div>
+      <div class="field" style="margin-top:12px"><span class="label">Seu nome</span><input class="f" value="Marco"></div>
+      <div class="field" style="margin-top:12px"><span class="label">E-mail</span><input class="f" value="marco@beam360.com.br"></div>
+      <div class="field" style="margin-top:12px"><span class="label">Senha (mín. 8)</span><input class="f" type="password" value="••••••••••"></div>
+      <button class="btn btn-primary" style="width:100%; margin-top:18px">Criar conta e organização</button>
+      <p class="auth-alt">Já tem conta? <a data-goto="login">Entrar</a></p>
+    </div>
+  </div>`,
+
+review: `
+  <div class="review-wrap">
+    <div class="review-top">
+      <div class="brand" style="border:none;padding:0;height:auto"><span class="logo">S</span><span class="name">SOIE</span></div>
+      <span class="pill p-warn">Aguardando sua avaliação</span>
+    </div>
+    <div class="review-body">
+      <p class="label">Entrega para revisão</p>
+      <h1 class="auth-title" style="margin-top:4px">Reels Instagram — Paradise</h1>
+      <p class="auth-sub">Beam Agência enviou este roteiro para você aprovar ou pedir ajuste.</p>
+
+      <div class="card card-p" style="margin-top:18px; display:flex; flex-direction:column; gap:14px">
+        <div><span class="label">Gancho (0–3s)</span><p style="font-weight:600;margin-top:4px">Você está perdendo dinheiro em cada venda sem saber?</p></div>
+        ${[["1","3s","Close no rosto, corte seco","Se você aceita cartão, para agora.","PARE"],
+           ["2","6s","Tela do checkout","A taxa escondida come sua margem.","A taxa oculta"],
+           ["3","8s","Dashboard Paradise","Com a Paradise você vê tudo e paga menos.","-1,2% por venda"]].map(([n,s,v,vo,t])=>`
+          <div class="scene"><div class="row"><span class="pill p-brand">Cena ${n}</span><span class="sub tnum">${s}</span></div>
+          <p style="margin-top:6px"><span class="muted">Visual:</span> ${v}</p>
+          <p><span class="muted">Narração:</span> ${vo}</p>
+          <p><span class="muted">Texto na tela:</span> ${t}</p></div>`).join("")}
+        <div><span class="label">CTA</span><p style="margin-top:4px">Comenta 'QUERO' para receber a simulação de taxas.</p></div>
+      </div>
+
+      <div class="card card-p" style="margin-top:16px">
+        <p class="label">O que você achou?</p>
+        <div class="field" style="margin-top:10px"><span class="label">Seu nome (opcional)</span><input class="f" placeholder="Ex.: Marco"></div>
+        <div class="field" style="margin-top:10px"><span class="label">Comentário (para ajustes)</span>
+          <textarea class="f" rows="2" placeholder="Ex.: trocar o gancho da abertura, deixar o CTA mais direto…"></textarea></div>
+        <div class="row" style="gap:10px; margin-top:14px">
+          <button class="btn btn-ok" style="flex:1">✓ Aprovar</button>
+          <button class="btn btn-ghost" style="flex:1">✎ Solicitar ajuste</button>
+        </div>
+      </div>
+      <p class="note" style="text-align:center; margin-top:14px">Link seguro • você não precisa de conta para responder.</p>
+    </div>
+  </div>`,
+};
+
+// ---------- Build nav ----------
+const navEl = document.getElementById("nav");
+navEl.innerHTML = NAV.map(grp => `
+  <div class="nav-group"><p>${grp.g}</p>
+    ${grp.items.map(([id,label,ico]) => `<button class="nav-item" data-screen="${id}"><span class="ico">${ico}</span>${label}</button>`).join("")}
+  </div>`).join("");
+
+// ---------- Build screens ----------
+const screensEl = document.getElementById("screens");
+screensEl.innerHTML = Object.entries(SCREENS).map(([id,html]) =>
+  `<div class="screen" id="s-${id}">${html}</div>`).join("");
+
+const appEl = document.querySelector(".app");
+function go(id){
+  document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === "s-"+id));
+  document.querySelectorAll(".nav-item").forEach(n => n.classList.toggle("active", n.dataset.screen === id));
+  const full = FULLSCREEN.has(id);
+  appEl.classList.toggle("fullscreen", full);
+  document.getElementById("demoTag").style.display = full ? "none" : "";
+  document.getElementById("backFab").style.display = full ? "block" : "none";
+  window.scrollTo(0,0);
+}
+navEl.querySelectorAll(".nav-item").forEach(b => b.addEventListener("click", () => go(b.dataset.screen)));
+document.getElementById("backFab").addEventListener("click", () => go("dashboard"));
+// Links internos entre login/registro
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-goto]");
+  if (t) { e.preventDefault(); go(t.dataset.goto); }
+});
+// Abas (seg) genéricas: alterna .on e mostra o painel correspondente
+document.addEventListener("click", (e) => {
+  const tab = e.target.closest(".seg[data-tabs] button[data-tab]");
+  if (!tab) return;
+  const group = tab.closest(".seg").dataset.tabs;
+  tab.parentElement.querySelectorAll("button").forEach(b => b.classList.toggle("on", b === tab));
+  document.querySelectorAll(`[data-panel="${group}"]`).forEach(p =>
+    p.style.display = p.dataset.name === tab.dataset.tab ? "" : "none");
+});
+go("dashboard");
+
+// ---------- Theme toggle ----------
+const themeBtn = document.getElementById("themeBtn");
+function setThemeIcon(){
+  const dark = (document.documentElement.getAttribute("data-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark":"light")) === "dark";
+  themeBtn.textContent = dark ? "☀" : "☾";
+}
+themeBtn.addEventListener("click", () => {
+  const cur = document.documentElement.getAttribute("data-theme")
+    || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  document.documentElement.setAttribute("data-theme", cur === "dark" ? "light" : "dark");
+  setThemeIcon();
+});
+setThemeIcon();
+</script>

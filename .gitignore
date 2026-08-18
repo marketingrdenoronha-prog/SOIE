@@ -1,0 +1,27 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# builds
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# env / secrets
+.env
+.env.local
+.env.*.local
+
+# prisma
+packages/db/prisma/*.db
+
+# logs / os
+*.log
+.DS_Store
+coverage/
+.turbo/
+packages/*/pnpm-lock.yaml
+apps/*/scripts/smoke.mts
+apps/web/node_modules/.prisma

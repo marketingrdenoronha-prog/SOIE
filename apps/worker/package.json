@@ -1,0 +1,25 @@
+{
+  "name": "@soie/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "echo 'no lint'"
+  },
+  "dependencies": {
+    "@soie/ai": "workspace:*",
+    "@soie/config": "workspace:*",
+    "@soie/contracts": "workspace:*",
+    "@soie/db": "workspace:*",
+    "@soie/queue": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

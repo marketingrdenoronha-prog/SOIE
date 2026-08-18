@@ -1,0 +1,37 @@
+{
+  "name": "soie",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SOIE — Sistema Operacional de Inteligência Editorial (plataforma SaaS)",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run build --filter=\"./packages/*\" && turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "db:generate": "pnpm --filter @soie/db generate",
+    "db:migrate": "pnpm --filter @soie/db migrate",
+    "db:seed": "pnpm --filter @soie/db seed"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "argon2",
+      "esbuild",
+      "sharp"
+    ],
+    "overrides": {
+      "ioredis": "5.11.1"
+    }
+  }
+}

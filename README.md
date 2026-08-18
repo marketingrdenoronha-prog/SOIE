@@ -14,6 +14,32 @@ O sistema é dividido em partes, cada uma em seu próprio diretório dentro de `
 
 > As partes seguintes (agentes especializados, fluxos de trabalho, protocolos de pesquisa, formatos de entrega etc.) serão adicionadas como novos diretórios `sistema/parte-N-*` conforme forem definidas.
 
+## Plataforma SaaS (arquitetura)
+
+Além do sistema de prompts, o repositório abriga o projeto da **plataforma SaaS SOIE** — o produto que automatiza a inteligência editorial com IA para centenas de clientes simultâneos.
+
+Toda a **engenharia do sistema** (Fases 1 a 8: arquitetura, banco, módulos, agentes, fluxo, UX, backend e subsistema de IA) está documentada em [`arquitetura/`](arquitetura/), produzida **antes de qualquer código de aplicação**.
+
+### Código
+
+O scaffold funcional do monorepo já está implementado. Veja [`GETTING_STARTED.md`](GETTING_STARTED.md) para rodar localmente.
+
+```
+apps/api    NestJS — multi-tenancy (RLS), auth, clientes, orquestração de IA, health
+apps/web    Next.js — app shell (sidebar, dark mode), dashboard, módulo de IA
+packages/   config · contracts (Zod) · db (Prisma, todas as entidades) · ai (Gateway + Orchestrator)
+```
+
+Estado: todos os pacotes passam no `typecheck`, o schema Prisma passa no `prisma validate` e o Orchestrator de agentes roda de ponta a ponta (pipeline `research`). Os adapters de IA, workers/filas, RAG ao vivo e billing têm interfaces prontas e ficam para as próximas fases — detalhes na tabela de estado em [`GETTING_STARTED.md`](GETTING_STARTED.md).
+
+### Deploy
+
+Backend (API + worker + Postgres + Redis) no **Render**, frontend na **Vercel**. Passo a passo em [`DEPLOY.md`](DEPLOY.md).
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/marketingrdenoronha-prog/soie)
+
+As migrações, as políticas de RLS e o seed rodam automaticamente a cada deploy (via `preDeployCommand` no `render.yaml`).
+
 ## Parte 1 — Constituição do Sistema
 
 A Constituição é a camada inviolável do sistema. Ela define:

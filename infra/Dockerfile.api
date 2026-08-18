@@ -1,0 +1,43 @@
+# Multi-stage build for the SOIE API (NestJS).
+# Build context is the repo root: docker build -f infra/Dockerfile.api .
+FROM node:22-slim AS base
+ENV PNPM_HOME=/pnpm
+ENV PATH=$PNPM_HOME:$PATH
+# openssl: required by Prisma's query engine at runtime (missing on node:slim).
+# corepack prepare: bakes the pnpm binary into the image so the runtime stage's
+# preDeployCommand (migrate/rls/seed) doesn't download it on first use.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends openssl ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && corepack enable \
+ && corepack prepare pnpm@10.33.0 --activate
+WORKDIR /app
+
+# ---- deps: copy ALL workspace manifests so --frozen-lockfile matches the
+#      lockfile exactly, then install once (cached until a manifest changes) ----
+FROM base AS deps
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY packages/config/package.json packages/config/
+COPY packages/contracts/package.json packages/contracts/
+COPY packages/db/package.json packages/db/
+COPY packages/ai/package.json packages/ai/
+COPY packages/queue/package.json packages/queue/
+COPY apps/api/package.json apps/api/
+COPY apps/worker/package.json apps/worker/
+COPY apps/web/package.json apps/web/
+RUN pnpm install --frozen-lockfile
+
+# ---- build: generate Prisma client, then build the API and its workspace
+#      deps in dependency order (turbo resolves the graph) ----
+FROM deps AS build
+COPY . .
+RUN pnpm --filter @soie/db generate \
+ && pnpm exec turbo run build --filter=@soie/api...
+
+# ---- runtime ----
+FROM base AS runtime
+ENV NODE_ENV=production
+COPY --from=build /app /app
+WORKDIR /app/apps/api
+EXPOSE 3333
+CMD ["node", "dist/main.js"]
