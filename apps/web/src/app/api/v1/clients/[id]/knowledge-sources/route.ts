@@ -91,7 +91,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       },
     });
     // 201 mesmo em falha de processamento: a fonte fica listada como "failed"
-    // com o motivo, e o cliente recebe `error` para exibir imediatamente.
-    return ok({ source, error: res.error ?? null }, 201);
+    // com o motivo, e o cliente recebe `error`/`errorCode` para exibir.
+    return ok({ source, error: res.error ?? null, errorCode: res.errorCode ?? null }, 201);
   });
 }

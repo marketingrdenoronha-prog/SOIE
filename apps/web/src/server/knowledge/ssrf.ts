@@ -21,8 +21,10 @@ export class KnowledgeFetchError extends Error {
       | "too_large"
       | "bad_content_type"
       | "http_error"
+      | "dns_error"
       | "fetch_failed",
     message: string,
+    public readonly httpStatus?: number,
   ) {
     super(message);
   }
@@ -96,7 +98,16 @@ export async function assertPublicUrl(raw: string): Promise<URL> {
 export interface FetchedPage {
   finalUrl: string;
   contentType: string;
+  status: number;
   body: string;
+}
+
+/** Decodifica os bytes conforme o charset declarado (utf-8 por padrão; latin1/
+ * windows-1252 quando o content-type indicar). */
+function decodeBody(bytes: Buffer, contentType: string): string {
+  const cs = (contentType.match(/charset=([^\s;]+)/i)?.[1] ?? "").toLowerCase();
+  if (cs.includes("iso-8859") || cs.includes("latin1") || cs.includes("windows-1252")) return bytes.toString("latin1");
+  return bytes.toString("utf8");
 }
 
 /** Busca a página revalidando cada redirect, com timeout e limite de tamanho. */
@@ -112,23 +123,31 @@ export async function safeFetchUrl(raw: string): Promise<FetchedPage> {
           method: "GET",
           redirect: "manual",
           signal: controller.signal,
-          headers: { "user-agent": "SOIE-KnowledgeBot/1.0", accept: "text/html,text/plain,*/*;q=0.8" },
+          headers: {
+            // UA identificável de navegador-compatível — reduz 403 de sites que
+            // barram clientes desconhecidos, sem burlar proteção anti-bot.
+            "user-agent": "Mozilla/5.0 (compatible; SOIE-KnowledgeBot/1.0; +https://soie.app/bot)",
+            accept: "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5",
+            "accept-language": "pt-BR,pt;q=0.9,en;q=0.7",
+          },
         });
       } catch (e) {
         if (e instanceof Error && e.name === "AbortError") throw new KnowledgeFetchError("timeout", "Tempo esgotado ao buscar a página.");
+        const cause = (e as { cause?: { code?: string } })?.cause?.code;
+        if (cause === "ENOTFOUND" || cause === "EAI_AGAIN") throw new KnowledgeFetchError("dns_error", "Domínio não encontrado (DNS).");
         throw new KnowledgeFetchError("fetch_failed", "Não foi possível acessar a página.");
       }
 
       // Redirect: revalida o novo destino (bloqueia SSRF via redirect).
       if (res.status >= 300 && res.status < 400) {
         const loc = res.headers.get("location");
-        if (!loc) throw new KnowledgeFetchError("http_error", `Redirecionamento sem destino (HTTP ${res.status}).`);
+        if (!loc) throw new KnowledgeFetchError("http_error", `Redirecionamento sem destino (HTTP ${res.status}).`, res.status);
         if (hop === MAX_REDIRECTS) throw new KnowledgeFetchError("too_many_redirects", "Muitos redirecionamentos.");
         current = await assertPublicUrl(new URL(loc, current).toString());
         continue;
       }
 
-      if (res.status >= 400) throw new KnowledgeFetchError("http_error", `A página respondeu HTTP ${res.status}.`);
+      if (res.status >= 400) throw new KnowledgeFetchError("http_error", `A página respondeu HTTP ${res.status}.`, res.status);
 
       const contentType = (res.headers.get("content-type") ?? "").toLowerCase();
       if (contentType && !ALLOWED_CONTENT.some((c) => contentType.includes(c))) {
@@ -141,7 +160,7 @@ export async function safeFetchUrl(raw: string): Promise<FetchedPage> {
       const reader = res.body?.getReader();
       if (!reader) {
         const text = await res.text();
-        return { finalUrl: current.toString(), contentType, body: text.slice(0, MAX_BYTES) };
+        return { finalUrl: current.toString(), contentType, status: res.status, body: text.slice(0, MAX_BYTES) };
       }
       const chunks: Uint8Array[] = [];
       let total = 0;
@@ -157,8 +176,8 @@ export async function safeFetchUrl(raw: string): Promise<FetchedPage> {
           chunks.push(value);
         }
       }
-      const body = Buffer.concat(chunks.map((c) => Buffer.from(c))).toString("utf8");
-      return { finalUrl: current.toString(), contentType, body };
+      const body = decodeBody(Buffer.concat(chunks.map((c) => Buffer.from(c))), contentType);
+      return { finalUrl: current.toString(), contentType, status: res.status, body };
     }
     throw new KnowledgeFetchError("too_many_redirects", "Muitos redirecionamentos.");
   } finally {

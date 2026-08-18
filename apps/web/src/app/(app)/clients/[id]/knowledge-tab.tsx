@@ -272,6 +272,17 @@ function SourceCard({ clientId, source, onChanged }: { clientId: string; source:
   const st = STATUS[source.enabled ? source.status : "disabled"] ?? STATUS.pending;
   const chunks = source.meta?.chunks as number | undefined;
   const errMsg = source.meta?.error as string | undefined;
+  const errCode = source.meta?.errorCode as string | undefined;
+  const errHint =
+    errCode === "JS_RENDER_REQUIRED"
+      ? "Dica: este site monta o conteúdo por JavaScript. Copie o texto da página e adicione como nota."
+      : errCode === "HTTP_403"
+        ? "Dica: o site bloqueia leitura automática. Copie o texto e adicione como nota, ou tente outra URL do mesmo conteúdo."
+        : errCode === "HTTP_404" || errCode === "DNS_ERROR"
+          ? "Dica: confira se o endereço está correto e acessível."
+          : errCode === "INSUFFICIENT_CONTENT"
+            ? "Dica: aponte para a página específica do conteúdo (artigo/serviço) ou cole o texto como nota."
+            : undefined;
 
   async function reprocess() {
     setBusy("reprocess"); setErr(null);
@@ -312,7 +323,12 @@ function SourceCard({ clientId, source, onChanged }: { clientId: string; source:
               {(source.tags ?? []).map((tag) => <span key={tag} className="rounded bg-border/50 px-1.5 py-0.5 text-[10px] text-muted">{tag}</span>)}
             </div>
           )}
-          {source.status === "failed" && errMsg && <p className="mt-1 text-[11px] text-crit">Falha: {errMsg}</p>}
+          {source.status === "failed" && errMsg && (
+            <>
+              <p className="mt-1 text-[11px] text-crit">Falha: {errMsg}</p>
+              {errHint && <p className="mt-0.5 text-[11px] text-muted">{errHint}</p>}
+            </>
+          )}
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <div className="flex gap-1">

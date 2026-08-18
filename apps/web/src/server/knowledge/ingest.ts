@@ -1,8 +1,62 @@
 import { prisma } from "@soie/db";
 import { safeFetchUrl, KnowledgeFetchError } from "./ssrf";
-import { extractPage } from "./extract";
+import { extractContent, assessContent } from "./extract";
 import { chunkText, normalizeText, checksum, approxTokens } from "./chunk";
 import { embedText } from "../ai-runtime";
+
+/** Diagnóstico estruturado da ingestão (persistido em meta; nunca conteúdo
+ * sensível completo nem credenciais). */
+export interface IngestDiagnostics {
+  errorCode?: string;
+  httpStatus?: number;
+  contentType?: string;
+  htmlLength?: number;
+  extractedTextLength?: number;
+  extractionMethod?: string;
+  finalUrl?: string;
+  domain?: string;
+  likelyJavascriptRendered?: boolean;
+}
+
+/** Erro de ingestão com código estruturado + diagnóstico (extração/qualidade). */
+class KnowledgeIngestError extends Error {
+  constructor(public readonly errorCode: string, message: string, public readonly diagnostics: IngestDiagnostics = {}) {
+    super(message);
+  }
+}
+
+/** Traduz um erro de fetch/ingestão em { errorCode, message, httpStatus } com
+ * mensagem ÚTIL ao usuário (sem stack trace nem dados sensíveis). */
+function mapError(e: unknown): { errorCode: string; message: string; httpStatus?: number; diagnostics?: IngestDiagnostics } {
+  if (e instanceof KnowledgeIngestError) return { errorCode: e.errorCode, message: e.message, diagnostics: e.diagnostics };
+  if (e instanceof KnowledgeFetchError) {
+    switch (e.code) {
+      case "invalid_url":
+      case "blocked_protocol":
+      case "blocked_host":
+        return { errorCode: "BLOCKED_URL", message: e.message };
+      case "timeout":
+        return { errorCode: "TIMEOUT", message: "Tempo esgotado ao acessar a página." };
+      case "dns_error":
+        return { errorCode: "DNS_ERROR", message: "Domínio não encontrado (verifique a URL)." };
+      case "bad_content_type":
+        return { errorCode: "UNSUPPORTED_CONTENT_TYPE", message: e.message };
+      case "too_large":
+        return { errorCode: "HTTP_ERROR", message: e.message };
+      case "too_many_redirects":
+        return { errorCode: "HTTP_ERROR", message: "Muitos redirecionamentos." };
+      case "http_error": {
+        const s = e.httpStatus;
+        if (s === 403) return { errorCode: "HTTP_403", message: "O servidor recusou a importação automática (HTTP 403).", httpStatus: 403 };
+        if (s === 404) return { errorCode: "HTTP_404", message: "Página não encontrada (HTTP 404).", httpStatus: 404 };
+        return { errorCode: "HTTP_ERROR", message: e.message, httpStatus: s };
+      }
+      default:
+        return { errorCode: "HTTP_ERROR", message: "Não foi possível acessar a página." };
+    }
+  }
+  return { errorCode: "EXTRACTION_ERROR", message: e instanceof Error ? e.message : "Falha ao processar a fonte." };
+}
 
 /**
  * Ingestão de fontes na Base de Conhecimento (síncrona, no request do Next.js —
@@ -44,7 +98,7 @@ export async function ensureKnowledgeBase(organizationId: string, clientId: stri
 }
 
 /** Cria a fonte e a processa (fetch/extract → normaliza → chunk → indexa). */
-export async function createKnowledgeSource(input: IngestInput): Promise<{ id: string; status: string; error?: string }> {
+export async function createKnowledgeSource(input: IngestInput): Promise<{ id: string; status: string; error?: string; errorCode?: string }> {
   const baseId = await ensureKnowledgeBase(input.organizationId, input.clientId);
   const isUrl = URL_TYPES.includes(input.type);
 
@@ -70,17 +124,25 @@ export async function createKnowledgeSource(input: IngestInput): Promise<{ id: s
     await processSource(doc.id, input, isUrl);
     return { id: doc.id, status: "ready" };
   } catch (e) {
-    const error = e instanceof KnowledgeFetchError ? e.message : e instanceof Error ? e.message : "Falha ao processar.";
-    await prisma.knowledgeDocument
-      .update({ where: { id: doc.id }, data: { status: "failed", meta: { error } } })
-      .catch(() => {});
-    // Fonte fica visível como "failed" (com o motivo) e o usuário recebe o erro.
-    return { id: doc.id, status: "failed", error };
+    return failSource(doc.id, input, e);
   }
 }
 
+/** Persiste a falha com diagnóstico estruturado + log (sem conteúdo sensível). */
+async function failSource(docId: string, input: IngestInput, e: unknown): Promise<{ id: string; status: string; error?: string; errorCode?: string }> {
+  const mapped = mapError(e);
+  const diagnostics: IngestDiagnostics = { errorCode: mapped.errorCode, httpStatus: mapped.httpStatus, ...(mapped.diagnostics ?? {}) };
+  let host: string | undefined;
+  try { host = input.url ? new URL(input.url).hostname : undefined; } catch { /* ignore */ }
+  console.log("knowledge.ingest.failed", JSON.stringify({ sourceId: docId, organizationId: input.organizationId, clientId: input.clientId, host, ...diagnostics }));
+  await prisma.knowledgeDocument
+    .update({ where: { id: docId }, data: { status: "failed", meta: { error: mapped.message, ...diagnostics } } })
+    .catch(() => {});
+  return { id: docId, status: "failed", error: mapped.message, errorCode: mapped.errorCode };
+}
+
 /** Reprocessa uma fonte existente (re-fetch da URL ou re-chunk da nota/doc). */
-export async function reprocessKnowledgeSource(organizationId: string, sourceId: string): Promise<{ status: string; error?: string }> {
+export async function reprocessKnowledgeSource(organizationId: string, sourceId: string): Promise<{ status: string; error?: string; errorCode?: string }> {
   const doc = await prisma.knowledgeDocument.findFirst({
     where: { id: sourceId, organizationId },
     select: { id: true, type: true, url: true, title: true, content: true, clientId: true, projectId: true, tags: true, priority: true },
@@ -104,30 +166,62 @@ export async function reprocessKnowledgeSource(organizationId: string, sourceId:
     );
     return { status: "ready" };
   } catch (e) {
-    const error = e instanceof Error ? e.message : "Falha ao reprocessar.";
-    await prisma.knowledgeDocument.update({ where: { id: doc.id }, data: { status: "failed", meta: { error } } }).catch(() => {});
-    return { status: "failed", error };
+    const r = await failSource(doc.id, {
+      organizationId, clientId: doc.clientId ?? "", projectId: doc.projectId,
+      type: doc.type as KnowledgeType, title: doc.title, content: doc.content ?? undefined, url: doc.url ?? undefined,
+    }, e);
+    return { status: "failed", error: r.error, errorCode: r.errorCode };
   }
 }
 
-/** Núcleo: resolve o conteúdo, deduplica, chunka e indexa (com embeddings opc.). */
+/** Núcleo: resolve o conteúdo (com CASCATA de extração p/ URLs), deduplica,
+ * chunka e indexa (com embeddings opc.). */
 async function processSource(docId: string, input: IngestInput, isUrl: boolean): Promise<void> {
   const patch: Record<string, unknown> = { fetchedAt: new Date() };
+  const meta: Record<string, unknown> = {};
   let rawContent = input.content ?? "";
   let title = input.title;
 
   if (isUrl) {
-    if (!input.url) throw new Error("URL ausente.");
-    const page = await safeFetchUrl(input.url);
-    const extracted = extractPage(page.body);
-    rawContent = extracted.text;
-    title = title || extracted.title;
+    if (!input.url) throw new KnowledgeIngestError("BLOCKED_URL", "URL ausente.");
+    const page = await safeFetchUrl(input.url); // valida SSRF + revalida redirects
+    const extracted = extractContent(page.body);
     let domain: string | undefined;
-    try {
-      domain = new URL(page.finalUrl).hostname.replace(/^www\./, "");
-    } catch {
-      /* ignore */
+    try { domain = new URL(page.finalUrl).hostname.replace(/^www\./, ""); } catch { /* ignore */ }
+
+    const diag: IngestDiagnostics = {
+      httpStatus: page.status,
+      contentType: page.contentType.split(";")[0] || undefined,
+      htmlLength: extracted.htmlLength,
+      extractedTextLength: extracted.textLength,
+      extractionMethod: extracted.method,
+      finalUrl: page.finalUrl,
+      domain,
+      likelyJavascriptRendered: extracted.likelyJavascriptRendered,
+    };
+
+    // Página curta e útil ainda vale: inclui título/descrição no conteúdo
+    // indexável quando o corpo é pequeno (institucional).
+    const parts = extracted.textLength < 300 && extracted.description
+      ? [`${extracted.title}. ${extracted.description}`, extracted.text]
+      : [extracted.text];
+    rawContent = parts.filter(Boolean).join("\n\n");
+    title = title || extracted.title;
+
+    const normalized = normalizeText(rawContent);
+    const useful = assessContent({ ...extracted, textLength: normalized.length }, Boolean(extracted.description));
+    if (!useful.useful) {
+      if (extracted.likelyJavascriptRendered) {
+        throw new KnowledgeIngestError("JS_RENDER_REQUIRED", "O site parece carregar o conteúdo usando JavaScript — não há texto suficiente no HTML inicial.", diag);
+      }
+      if (extracted.htmlLength < 200) {
+        throw new KnowledgeIngestError("EMPTY_RESPONSE", "A página retornou praticamente vazia.", diag);
+      }
+      throw new KnowledgeIngestError("INSUFFICIENT_CONTENT", "Página acessada, mas encontramos pouco conteúdo textual para indexar.", diag);
     }
+
+    console.log("knowledge.ingest.ok", JSON.stringify({ sourceId: docId, organizationId: input.organizationId, clientId: input.clientId, host: domain, httpStatus: diag.httpStatus, contentType: diag.contentType, htmlLength: diag.htmlLength, extractionMethod: diag.extractionMethod, extractedTextLength: diag.extractedTextLength }));
+
     patch.domain = domain ?? null;
     patch.canonicalUrl = extracted.canonicalUrl ?? page.finalUrl;
     patch.author = extracted.author ?? null;
@@ -135,11 +229,17 @@ async function processSource(docId: string, input: IngestInput, isUrl: boolean):
     patch.summary = extracted.description ?? null;
     patch.language = extracted.language ?? null;
     patch.url = page.finalUrl;
+    meta.httpStatus = diag.httpStatus;
+    meta.contentType = diag.contentType;
+    meta.htmlLength = diag.htmlLength;
+    meta.extractionMethod = diag.extractionMethod;
+    meta.finalUrl = diag.finalUrl;
   }
 
   const content = normalizeText(rawContent).slice(0, MAX_CONTENT_CHARS);
-  if (!content || content.length < 20) {
-    throw new Error("Não foi possível extrair conteúdo útil desta fonte.");
+  // Nota/documento (texto do usuário): floor baixo; URL já passou pela avaliação.
+  if (!content || (!isUrl && content.length < 10)) {
+    throw new KnowledgeIngestError("INSUFFICIENT_CONTENT", "Sem conteúdo útil para indexar.");
   }
   const sum = checksum(content);
 
@@ -148,7 +248,7 @@ async function processSource(docId: string, input: IngestInput, isUrl: boolean):
     where: { organizationId: input.organizationId, clientId: input.clientId, checksum: sum, status: "ready", id: { not: docId } },
     select: { id: true },
   });
-  if (dup) throw new Error("Conteúdo idêntico já existe na base (duplicata).");
+  if (dup) throw new KnowledgeIngestError("DUPLICATE", "Conteúdo idêntico já existe na base (duplicata).");
 
   const chunks = chunkText(content);
 
@@ -202,7 +302,7 @@ async function processSource(docId: string, input: IngestInput, isUrl: boolean):
       content,
       checksum: sum,
       status: "ready",
-      meta: { chunks: chunks.length, chars: content.length },
+      meta: { chunks: chunks.length, chars: content.length, ...meta },
     },
   });
 }
