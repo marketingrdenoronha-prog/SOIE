@@ -2,13 +2,136 @@ import { lookup } from "node:dns/promises";
 import net from "node:net";
 
 /**
- * Busca segura de URL pública para ingestão na Base de Conhecimento.
+ * Módulo ÚNICO de URL para a Base de Conhecimento: normalização de sintaxe
+ * (parsing tolerante a copy/paste, sem rede) + busca segura anti-SSRF.
  *
- * Protege contra SSRF: só http/https, resolve o host e BLOQUEIA IPs privados,
- * loopback, link-local e metadata services; segue no máximo N redirects
- * revalidando cada salto; aplica timeout, limite de tamanho e checa content-type.
- * O conteúdo externo é sempre DADO (nunca instrução) — quem chama sanitiza.
+ * Segurança: só http/https, resolve o host e BLOQUEIA IPs privados, loopback,
+ * link-local e metadata services; segue no máximo N redirects revalidando cada
+ * salto; aplica timeout, limite de tamanho e checa content-type. O conteúdo
+ * externo é sempre DADO (nunca instrução) — quem chama sanitiza.
  */
+
+// ───────────────────────── Normalização de sintaxe ─────────────────────────
+// FONTE ÚNICA DE VERDADE para parsing/normalização. Usa o parser nativo
+// `new URL()` como parser principal; regex só para detecção de protocolo.
+// Erros aqui são LOCAIS (sintaxe/protocolo) — não devem persistir uma fonte.
+
+export type UrlErrorCode = "empty_url" | "invalid_url" | "unsupported_protocol" | "invalid_host";
+
+export class UrlValidationError extends Error {
+  constructor(public readonly code: UrlErrorCode, message: string) {
+    super(message);
+  }
+}
+
+export interface NormalizedUrl {
+  /** Objeto parseado — é a URL usada para o fetch (fetchUrl). */
+  url: URL;
+  /** Valor bruto recebido, preservado para diagnóstico/auditoria. */
+  original: string;
+  /** Representação canônica de sintaxe (`url.toString()`). */
+  normalized: string;
+  /** Se o protocolo foi adicionado automaticamente (entrada sem esquema). */
+  protocolAdded: boolean;
+}
+
+// Caracteres a remover das EXTREMIDADES: espaços, controles C0/C1, DEL, nbsp,
+// zero-width (200B–200D), marcas bidi (200E/200F), separadores de linha/parág.
+// (2028/2029), word-joiner (2060) e BOM (FEFF). Escapes evitam invisíveis no
+// fonte. Não tocamos em caracteres internos legítimos — o parser nativo cuida
+// de percent-encoding, acentos e punycode.
+const EDGE_INVISIBLE = "\\s\\u0000-\\u001f\\u007f-\\u009f\\u00a0\\u200b-\\u200f\\u2028\\u2029\\u2060\\ufeff";
+const EDGE_JUNK = new RegExp(`^[${EDGE_INVISIBLE}]+|[${EDGE_INVISIBLE}]+$`, "g");
+
+/** Esquema seguido de autoridade, ex.: `https://`, `ftp://`, `file://`. */
+const SCHEME_WITH_AUTHORITY = /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\//;
+/** Esquema logo no início, ex.: `mailto:`, `javascript:`, `host:port`. */
+const LEADING_SCHEME = /^([a-zA-Z][a-zA-Z0-9+.-]*):/;
+
+function cleanInput(raw: string): string {
+  return (raw ?? "").replace(EDGE_JUNK, "");
+}
+
+/**
+ * Normaliza uma entrada "razoável" em uma URL http(s) válida.
+ * - " empresa.com.br/landing " → https://empresa.com.br/landing
+ * - www.empresa.com.br/x       → https://www.empresa.com.br/x
+ * - https://lp.empresa.com/x?y → mantém como está
+ * - javascript:alert(1)        → UnsupportedProtocol
+ */
+export function normalizePublicUrl(raw: string): NormalizedUrl {
+  const original = raw ?? "";
+  const value = cleanInput(original);
+  if (!value) throw new UrlValidationError("empty_url", "Informe uma URL.");
+
+  let candidate: string;
+  let protocolAdded = false;
+
+  const authority = value.match(SCHEME_WITH_AUTHORITY);
+  if (authority) {
+    const scheme = authority[1]!.toLowerCase();
+    if (scheme === "http" || scheme === "https") candidate = value;
+    else throw new UrlValidationError("unsupported_protocol", "Use uma URL iniciada por http:// ou https://.");
+  } else {
+    const lead = value.match(LEADING_SCHEME);
+    if (lead) {
+      const scheme = lead[1]!.toLowerCase();
+      const after = value.slice(lead[0].length);
+      if (scheme === "http" || scheme === "https") {
+        candidate = value; // `http:algo` sem barras — deixa o parser nativo decidir.
+      } else if (/^\d/.test(after)) {
+        // `host:8080/...` sem protocolo — o "esquema" é, na verdade, o host.
+        candidate = `https://${value}`;
+        protocolAdded = true;
+      } else {
+        // javascript:, data:, mailto:, blob:, tel:, file (sem //)…
+        throw new UrlValidationError("unsupported_protocol", "Use uma URL iniciada por http:// ou https://.");
+      }
+    } else if (value.startsWith("//")) {
+      candidate = `https:${value}`; // protocol-relative
+      protocolAdded = true;
+    } else {
+      candidate = `https://${value}`;
+      protocolAdded = true;
+    }
+  }
+
+  let url: URL;
+  try {
+    url = new URL(candidate);
+  } catch {
+    throw new UrlValidationError("invalid_url", "A URL informada não possui um formato válido.");
+  }
+
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new UrlValidationError("unsupported_protocol", "Use uma URL iniciada por http:// ou https://.");
+  }
+  if (!url.hostname) {
+    throw new UrlValidationError("invalid_host", "A URL informada não possui um domínio válido.");
+  }
+  // Quando prefixamos o protocolo (entrada ambígua), exigimos um host "de
+  // verdade": com ponto (domínio) ou dois-pontos (IPv6). `localhost` e IPs
+  // literais passam adiante — quem decide bloqueá-los é a camada de segurança
+  // (SSRF → BLOCKED_URL), não a validação de sintaxe. Assim, "asdfqwer" vira
+  // INVALID_URL, mas "empresa.com.br" e "localhost" seguem o fluxo.
+  if (protocolAdded && !url.hostname.includes(".") && !url.hostname.includes(":") && url.hostname !== "localhost") {
+    throw new UrlValidationError("invalid_url", "A URL informada não possui um formato válido.");
+  }
+
+  return { url, original, normalized: url.toString(), protocolAdded };
+}
+
+/** Host + caminho, sem query/fragment — seguro para log (não vaza tokens/UTM). */
+export function safeUrlForLog(u: URL): string {
+  return `${u.protocol}//${u.host}${u.pathname}`;
+}
+
+/** Só o código local (para o chamador decidir se persiste ou rejeita). */
+export function isLocalUrlError(e: unknown): e is UrlValidationError {
+  return e instanceof UrlValidationError;
+}
+
+// ─────────────────────────── Busca segura (SSRF) ───────────────────────────
 
 export class KnowledgeFetchError extends Error {
   constructor(
@@ -17,11 +140,13 @@ export class KnowledgeFetchError extends Error {
       | "blocked_protocol"
       | "blocked_host"
       | "too_many_redirects"
+      | "redirect_blocked"
       | "timeout"
       | "too_large"
       | "bad_content_type"
       | "http_error"
       | "dns_error"
+      | "network_error"
       | "fetch_failed",
     message: string,
     public readonly httpStatus?: number,
@@ -62,17 +187,12 @@ export function isBlockedIp(ip: string): boolean {
   return false;
 }
 
-/** Valida esquema e garante que o host NÃO resolve para um destino interno. */
-export async function assertPublicUrl(raw: string): Promise<URL> {
-  let u: URL;
-  try {
-    u = new URL(raw);
-  } catch {
-    throw new KnowledgeFetchError("invalid_url", "URL inválida.");
-  }
-  if (u.protocol !== "http:" && u.protocol !== "https:") {
-    throw new KnowledgeFetchError("blocked_protocol", "Só são aceitos links http(s) públicos.");
-  }
+/**
+ * Garante que uma URL JÁ PARSEADA não aponta para um destino interno.
+ * Resolve TODOS os endereços (IPv4 e IPv6) e bloqueia qualquer um privado.
+ * Falha de resolução vira `dns_error` (≠ destino bloqueado por segurança).
+ */
+export async function assertHostAllowed(u: URL): Promise<void> {
   const host = u.hostname.replace(/^\[|\]$/g, "");
   if (!host || host === "localhost" || host.endsWith(".local") || host.endsWith(".internal")) {
     throw new KnowledgeFetchError("blocked_host", "Destino interno não permitido.");
@@ -80,19 +200,26 @@ export async function assertPublicUrl(raw: string): Promise<URL> {
   // Se o host já é um IP, valida direto; senão resolve TODOS os endereços.
   if (net.isIP(host) !== 0) {
     if (isBlockedIp(host)) throw new KnowledgeFetchError("blocked_host", "Destino interno/privado não permitido.");
-    return u;
+    return;
   }
   let addrs: { address: string }[];
   try {
     addrs = await lookup(host, { all: true });
   } catch {
-    throw new KnowledgeFetchError("blocked_host", "Não foi possível resolver o domínio.");
+    throw new KnowledgeFetchError("dns_error", "Não foi possível localizar o domínio informado.");
   }
-  if (addrs.length === 0) throw new KnowledgeFetchError("blocked_host", "Domínio sem endereço resolvível.");
+  if (addrs.length === 0) throw new KnowledgeFetchError("dns_error", "Domínio sem endereço resolvível.");
   for (const a of addrs) {
     if (isBlockedIp(a.address)) throw new KnowledgeFetchError("blocked_host", "O domínio aponta para um destino interno/privado.");
   }
-  return u;
+}
+
+/** Normaliza a sintaxe (via ./url) e garante host público. Mantida por
+ * compatibilidade — combina normalização + verificação de segurança. */
+export async function assertPublicUrl(raw: string): Promise<URL> {
+  const { url } = normalizePublicUrl(raw); // pode lançar UrlValidationError (sintaxe/protocolo)
+  await assertHostAllowed(url);
+  return url;
 }
 
 export interface FetchedPage {
@@ -100,6 +227,7 @@ export interface FetchedPage {
   contentType: string;
   status: number;
   body: string;
+  redirects: number;
 }
 
 /** Decodifica os bytes conforme o charset declarado (utf-8 por padrão; latin1/
@@ -110,9 +238,34 @@ function decodeBody(bytes: Buffer, contentType: string): string {
   return bytes.toString("utf8");
 }
 
+/** Resolve o destino de um redirect (relativo ou absoluto) via parser nativo e
+ * REVALIDA segurança. Erros viram `redirect_blocked` (exceto DNS, que é claro).
+ * Cross-domain é permitido desde que público e http(s). Exportado p/ testes. */
+export async function resolveRedirect(location: string, base: URL): Promise<URL> {
+  let next: URL;
+  try {
+    next = new URL(location, base); // resolve Location relativo (ex.: "/oferta/")
+  } catch {
+    throw new KnowledgeFetchError("redirect_blocked", "Redirecionamento para um endereço inválido.");
+  }
+  if (next.protocol !== "http:" && next.protocol !== "https:") {
+    throw new KnowledgeFetchError("redirect_blocked", "Redirecionamento para um protocolo não suportado.");
+  }
+  try {
+    await assertHostAllowed(next);
+  } catch (e) {
+    if (e instanceof KnowledgeFetchError && e.code === "dns_error") throw e;
+    throw new KnowledgeFetchError("redirect_blocked", "A página redirecionou para um endereço que não pode ser acessado.");
+  }
+  return next;
+}
+
 /** Busca a página revalidando cada redirect, com timeout e limite de tamanho. */
 export async function safeFetchUrl(raw: string): Promise<FetchedPage> {
-  let current = await assertPublicUrl(raw);
+  const { url } = normalizePublicUrl(raw); // sintaxe (pode lançar UrlValidationError)
+  await assertHostAllowed(url); // segurança do host inicial
+  let current = url;
+  let redirects = 0;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -134,16 +287,17 @@ export async function safeFetchUrl(raw: string): Promise<FetchedPage> {
       } catch (e) {
         if (e instanceof Error && e.name === "AbortError") throw new KnowledgeFetchError("timeout", "Tempo esgotado ao buscar a página.");
         const cause = (e as { cause?: { code?: string } })?.cause?.code;
-        if (cause === "ENOTFOUND" || cause === "EAI_AGAIN") throw new KnowledgeFetchError("dns_error", "Domínio não encontrado (DNS).");
-        throw new KnowledgeFetchError("fetch_failed", "Não foi possível acessar a página.");
+        if (cause === "ENOTFOUND" || cause === "EAI_AGAIN") throw new KnowledgeFetchError("dns_error", "Não foi possível localizar o domínio informado.");
+        throw new KnowledgeFetchError("network_error", "Não foi possível conectar ao site.");
       }
 
       // Redirect: revalida o novo destino (bloqueia SSRF via redirect).
       if (res.status >= 300 && res.status < 400) {
         const loc = res.headers.get("location");
         if (!loc) throw new KnowledgeFetchError("http_error", `Redirecionamento sem destino (HTTP ${res.status}).`, res.status);
-        if (hop === MAX_REDIRECTS) throw new KnowledgeFetchError("too_many_redirects", "Muitos redirecionamentos.");
-        current = await assertPublicUrl(new URL(loc, current).toString());
+        if (hop === MAX_REDIRECTS) throw new KnowledgeFetchError("too_many_redirects", "A página excedeu o limite de redirecionamentos.");
+        current = await resolveRedirect(loc, current);
+        redirects++;
         continue;
       }
 
@@ -160,7 +314,7 @@ export async function safeFetchUrl(raw: string): Promise<FetchedPage> {
       const reader = res.body?.getReader();
       if (!reader) {
         const text = await res.text();
-        return { finalUrl: current.toString(), contentType, status: res.status, body: text.slice(0, MAX_BYTES) };
+        return { finalUrl: current.toString(), contentType, status: res.status, body: text.slice(0, MAX_BYTES), redirects };
       }
       const chunks: Uint8Array[] = [];
       let total = 0;
@@ -177,9 +331,9 @@ export async function safeFetchUrl(raw: string): Promise<FetchedPage> {
         }
       }
       const body = decodeBody(Buffer.concat(chunks.map((c) => Buffer.from(c))), contentType);
-      return { finalUrl: current.toString(), contentType, status: res.status, body };
+      return { finalUrl: current.toString(), contentType, status: res.status, body, redirects };
     }
-    throw new KnowledgeFetchError("too_many_redirects", "Muitos redirecionamentos.");
+    throw new KnowledgeFetchError("too_many_redirects", "A página excedeu o limite de redirecionamentos.");
   } finally {
     clearTimeout(timer);
   }

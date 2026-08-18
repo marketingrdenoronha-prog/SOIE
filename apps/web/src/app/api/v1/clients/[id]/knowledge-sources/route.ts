@@ -2,7 +2,10 @@ import { z } from "zod";
 import { prisma } from "@soie/db";
 import { requireAuth } from "@/server/auth";
 import { ok, handle, Errors } from "@/server/http";
-import { createKnowledgeSource, type KnowledgeType } from "@/server/knowledge/ingest";
+import { createKnowledgeSource, mapKnowledgeError, type KnowledgeType } from "@/server/knowledge/ingest";
+import { normalizePublicUrl, UrlValidationError } from "@/server/knowledge/ssrf";
+
+const URL_TYPES = new Set(["article", "news", "webpage"]);
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -70,6 +73,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const { id } = await params;
     await ownedClient(org, id);
     const input = createInput.parse(await req.json());
+
+    // Validação SINTÁTICA antes de persistir: erros locais (vazio, sintaxe,
+    // protocolo) viram 400 e NÃO criam uma fonte "Falhou" inútil. Erros de rede/
+    // segurança/extração (URL já aceita) seguem para a fonte persistida abaixo.
+    if (URL_TYPES.has(input.type)) {
+      try {
+        normalizePublicUrl(input.url ?? "");
+      } catch (e) {
+        if (e instanceof UrlValidationError) throw Errors.badRequest(mapKnowledgeError(e).message);
+        throw e;
+      }
+    }
 
     const res = await createKnowledgeSource({
       organizationId: org,

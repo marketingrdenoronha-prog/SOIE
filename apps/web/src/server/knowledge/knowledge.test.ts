@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isBlockedIp, assertPublicUrl, KnowledgeFetchError } from "./ssrf.ts";
+import { isBlockedIp, assertPublicUrl, KnowledgeFetchError, normalizePublicUrl, UrlValidationError, resolveRedirect } from "./ssrf.ts";
 import { chunkText, normalizeText, checksum, approxTokens } from "./chunk.ts";
 import { extractPage, extractContent, assessContent } from "./extract.ts";
 
@@ -17,11 +17,82 @@ test("isBlockedIp permite IPs públicos", () => {
 });
 
 test("assertPublicUrl rejeita protocolo e host interno", async () => {
-  await assert.rejects(() => assertPublicUrl("ftp://example.com"), (e) => e instanceof KnowledgeFetchError && e.code === "blocked_protocol");
+  await assert.rejects(() => assertPublicUrl("ftp://example.com"), (e) => e instanceof UrlValidationError && e.code === "unsupported_protocol");
   await assert.rejects(() => assertPublicUrl("http://localhost/x"), (e) => e instanceof KnowledgeFetchError && e.code === "blocked_host");
   await assert.rejects(() => assertPublicUrl("http://127.0.0.1/x"), (e) => e instanceof KnowledgeFetchError && e.code === "blocked_host");
   await assert.rejects(() => assertPublicUrl("http://169.254.169.254/latest/meta-data"), (e) => e instanceof KnowledgeFetchError && e.code === "blocked_host");
-  await assert.rejects(() => assertPublicUrl("not-a-url"), (e) => e instanceof KnowledgeFetchError && e.code === "invalid_url");
+  await assert.rejects(() => assertPublicUrl("asdfqwerlkj"), (e) => e instanceof UrlValidationError && e.code === "invalid_url");
+});
+
+test("normalizePublicUrl: aceita URLs públicas legítimas (com/sem protocolo)", () => {
+  const ok = (raw: string, expectHref: string) => {
+    const r = normalizePublicUrl(raw);
+    assert.equal(r.url.href, expectHref, `${JSON.stringify(raw)} → ${r.url.href}`);
+  };
+  ok("empresa.com.br", "https://empresa.com.br/");
+  ok("empresa.com.br/", "https://empresa.com.br/");
+  ok("www.empresa.com.br/pagina", "https://www.empresa.com.br/pagina");
+  ok("empresa.com.br/landing-page", "https://empresa.com.br/landing-page");
+  ok("lp.empresa.com.br/oferta", "https://lp.empresa.com.br/oferta");
+  ok("go.empresa.com.br/campanha", "https://go.empresa.com.br/campanha");
+  ok("https://empresa.com.br", "https://empresa.com.br/");
+  ok("HTTPS://Empresa.com.BR/Path", "https://empresa.com.br/Path"); // host baixado, path preservado
+  ok("http://empresa.com.br/x", "http://empresa.com.br/x"); // http explícito é mantido
+  // query, UTM e fragment não invalidam; fragment é preservado no objeto.
+  ok("www.empresa.com.br/produto?id=123", "https://www.empresa.com.br/produto?id=123");
+  ok("empresa.com.br/oferta?utm_source=google&utm_campaign=b2b", "https://empresa.com.br/oferta?utm_source=google&utm_campaign=b2b");
+  ok("empresa.com.br/pagina#formulario", "https://empresa.com.br/pagina#formulario");
+  ok("empresa.com.br:8080/x", "https://empresa.com.br:8080/x"); // host:porta sem protocolo
+  ok("  empresa.com.br/landing-page  ", "https://empresa.com.br/landing-page"); // espaços nas bordas
+  ok("​ empresa.com.br ﻿", "https://empresa.com.br/"); // invisíveis nas bordas
+});
+
+test("normalizePublicUrl: metadados separados (original/normalized/protocolAdded)", () => {
+  const r = normalizePublicUrl("  lp.empresa.com.br/campanha?utm_source=instagram  ");
+  assert.equal(r.original, "  lp.empresa.com.br/campanha?utm_source=instagram  ");
+  assert.equal(r.normalized, "https://lp.empresa.com.br/campanha?utm_source=instagram");
+  assert.equal(r.protocolAdded, true);
+  assert.equal(normalizePublicUrl("https://empresa.com.br/x").protocolAdded, false);
+});
+
+test("normalizePublicUrl: rejeita vazio, protocolo perigoso e sintaxe inválida", () => {
+  const code = (raw: string) => {
+    try { normalizePublicUrl(raw); return "NO_THROW"; }
+    catch (e) { return e instanceof UrlValidationError ? e.code : "WRONG_TYPE"; }
+  };
+  assert.equal(code(""), "empty_url");
+  assert.equal(code("   "), "empty_url");
+  assert.equal(code("javascript:alert(1)"), "unsupported_protocol");
+  assert.equal(code("data:text/html,<b>x</b>"), "unsupported_protocol");
+  assert.equal(code("file:///etc/passwd"), "unsupported_protocol");
+  assert.equal(code("ftp://example.com"), "unsupported_protocol");
+  assert.equal(code("mailto:foo@bar.com"), "unsupported_protocol");
+  assert.equal(code("asdfqwerlkj"), "invalid_url"); // palavra solta, sem ponto
+  assert.equal(code("http://"), "invalid_url");
+});
+
+test("normalizePublicUrl: localhost/IP passam a sintaxe (bloqueio é do SSRF)", () => {
+  // Sintaticamente válidos — quem barra é assertHostAllowed (BLOCKED_URL).
+  assert.equal(normalizePublicUrl("localhost").url.hostname, "localhost");
+  assert.equal(normalizePublicUrl("127.0.0.1").url.hostname, "127.0.0.1");
+  assert.equal(normalizePublicUrl("192.168.0.1:8080/x").url.hostname, "192.168.0.1");
+});
+
+test("resolveRedirect: relativo/absoluto públicos são resolvidos; internos/proto viram redirect_blocked", async () => {
+  // IP público literal como base evita DNS no teste; host público passa direto.
+  const pub = new URL("https://93.184.216.34/artigo/1"); // faixa pública
+  // Location relativo é resolvido pelo parser nativo, mantendo o host.
+  const rel = await resolveRedirect("/oferta/", pub);
+  assert.equal(rel.href, "https://93.184.216.34/oferta/");
+  // Cross-domain para outro IP público é permitido (só http/https + SSRF).
+  const cross = await resolveRedirect("http://198.51.100.7/x", pub);
+  assert.equal(cross.href, "http://198.51.100.7/x");
+  // Redirect para loopback/privado/metadata é bloqueado (revalidação SSRF).
+  for (const loc of ["http://127.0.0.1/admin", "//169.254.169.254/meta", "http://10.0.0.9/x"]) {
+    await assert.rejects(() => resolveRedirect(loc, pub), (e) => e instanceof KnowledgeFetchError && e.code === "redirect_blocked", `${loc} deveria bloquear`);
+  }
+  // Redirect para protocolo perigoso é bloqueado antes de qualquer rede.
+  await assert.rejects(() => resolveRedirect("ftp://198.51.100.7/x", pub), (e) => e instanceof KnowledgeFetchError && e.code === "redirect_blocked");
 });
 
 test("normalizeText remove control chars e normaliza CRLF/tabs", () => {

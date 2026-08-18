@@ -1,20 +1,26 @@
 import { prisma } from "@soie/db";
-import { safeFetchUrl, KnowledgeFetchError } from "./ssrf";
+import { safeFetchUrl, KnowledgeFetchError, normalizePublicUrl, UrlValidationError, safeUrlForLog } from "./ssrf";
 import { extractContent, assessContent } from "./extract";
 import { chunkText, normalizeText, checksum, approxTokens } from "./chunk";
 import { embedText } from "../ai-runtime";
 
 /** Diagnóstico estruturado da ingestão (persistido em meta; nunca conteúdo
- * sensível completo nem credenciais). */
+ * sensível completo, query strings com tokens nem credenciais). */
 export interface IngestDiagnostics {
   errorCode?: string;
+  phase?: string;
   httpStatus?: number;
   contentType?: string;
   htmlLength?: number;
   extractedTextLength?: number;
   extractionMethod?: string;
+  normalizedUrl?: string;
   finalUrl?: string;
   domain?: string;
+  hostname?: string;
+  protocol?: string;
+  redirectCount?: number;
+  processingMs?: number;
   likelyJavascriptRendered?: boolean;
 }
 
@@ -26,36 +32,57 @@ class KnowledgeIngestError extends Error {
 }
 
 /** Traduz um erro de fetch/ingestão em { errorCode, message, httpStatus } com
- * mensagem ÚTIL ao usuário (sem stack trace nem dados sensíveis). */
-function mapError(e: unknown): { errorCode: string; message: string; httpStatus?: number; diagnostics?: IngestDiagnostics } {
+ * mensagem ÚTIL ao usuário (sem stack trace nem dados sensíveis). Cada FASE tem
+ * um código próprio — nada vira genericamente "URL inválida". */
+export function mapKnowledgeError(e: unknown): { errorCode: string; message: string; httpStatus?: number; diagnostics?: IngestDiagnostics } {
   if (e instanceof KnowledgeIngestError) return { errorCode: e.errorCode, message: e.message, diagnostics: e.diagnostics };
+  // Erros LOCAIS de sintaxe/protocolo (não são falha de rede nem de segurança).
+  if (e instanceof UrlValidationError) {
+    switch (e.code) {
+      case "empty_url":
+        return { errorCode: "EMPTY_URL", message: "Informe uma URL." };
+      case "unsupported_protocol":
+        return { errorCode: "UNSUPPORTED_PROTOCOL", message: "Use uma URL iniciada por http:// ou https://." };
+      case "invalid_host":
+        return { errorCode: "INVALID_HOST", message: "A URL informada não possui um domínio válido." };
+      default:
+        return { errorCode: "INVALID_URL", message: "A URL informada não possui um formato válido." };
+    }
+  }
   if (e instanceof KnowledgeFetchError) {
     switch (e.code) {
       case "invalid_url":
+        return { errorCode: "INVALID_URL", message: "A URL informada não possui um formato válido." };
       case "blocked_protocol":
+        return { errorCode: "UNSUPPORTED_PROTOCOL", message: "Use uma URL iniciada por http:// ou https://." };
       case "blocked_host":
-        return { errorCode: "BLOCKED_URL", message: e.message };
+        return { errorCode: "BLOCKED_URL", message: "Esta URL não pode ser acessada por segurança." };
+      case "redirect_blocked":
+        return { errorCode: "REDIRECT_BLOCKED", message: "A página redirecionou para um endereço que não pode ser acessado." };
+      case "too_many_redirects":
+        return { errorCode: "REDIRECT_LIMIT", message: "A página excedeu o limite de redirecionamentos." };
       case "timeout":
-        return { errorCode: "TIMEOUT", message: "Tempo esgotado ao acessar a página." };
+        return { errorCode: "TIMEOUT", message: "O site demorou demais para responder." };
       case "dns_error":
-        return { errorCode: "DNS_ERROR", message: "Domínio não encontrado (verifique a URL)." };
+        return { errorCode: "DNS_ERROR", message: "Não foi possível localizar o domínio informado." };
       case "bad_content_type":
         return { errorCode: "UNSUPPORTED_CONTENT_TYPE", message: e.message };
       case "too_large":
-        return { errorCode: "HTTP_ERROR", message: e.message };
-      case "too_many_redirects":
-        return { errorCode: "HTTP_ERROR", message: "Muitos redirecionamentos." };
+        return { errorCode: "HTTP_ERROR", message: "A página é muito grande para importar automaticamente." };
+      case "network_error":
+      case "fetch_failed":
+        return { errorCode: "NETWORK_ERROR", message: "Não foi possível conectar ao site." };
       case "http_error": {
         const s = e.httpStatus;
-        if (s === 403) return { errorCode: "HTTP_403", message: "O servidor recusou a importação automática (HTTP 403).", httpStatus: 403 };
-        if (s === 404) return { errorCode: "HTTP_404", message: "Página não encontrada (HTTP 404).", httpStatus: 404 };
-        return { errorCode: "HTTP_ERROR", message: e.message, httpStatus: s };
+        if (s === 403) return { errorCode: "HTTP_403", message: "O site recusou a importação automática.", httpStatus: 403 };
+        if (s === 404) return { errorCode: "HTTP_404", message: "A página informada não foi encontrada.", httpStatus: 404 };
+        return { errorCode: "HTTP_ERROR", message: `A página respondeu com erro${s ? ` (HTTP ${s})` : ""}.`, httpStatus: s };
       }
       default:
         return { errorCode: "HTTP_ERROR", message: "Não foi possível acessar a página." };
     }
   }
-  return { errorCode: "EXTRACTION_ERROR", message: e instanceof Error ? e.message : "Falha ao processar a fonte." };
+  return { errorCode: "EXTRACTION_ERROR", message: "A página foi acessada, mas ocorreu um erro ao processar seu conteúdo." };
 }
 
 /**
@@ -130,10 +157,12 @@ export async function createKnowledgeSource(input: IngestInput): Promise<{ id: s
 
 /** Persiste a falha com diagnóstico estruturado + log (sem conteúdo sensível). */
 async function failSource(docId: string, input: IngestInput, e: unknown): Promise<{ id: string; status: string; error?: string; errorCode?: string }> {
-  const mapped = mapError(e);
+  const mapped = mapKnowledgeError(e);
   const diagnostics: IngestDiagnostics = { errorCode: mapped.errorCode, httpStatus: mapped.httpStatus, ...(mapped.diagnostics ?? {}) };
-  let host: string | undefined;
-  try { host = input.url ? new URL(input.url).hostname : undefined; } catch { /* ignore */ }
+  let host: string | undefined = diagnostics.hostname;
+  if (!host && input.url) {
+    try { host = normalizePublicUrl(input.url).url.hostname; } catch { /* entrada não normalizável */ }
+  }
   console.log("knowledge.ingest.failed", JSON.stringify({ sourceId: docId, organizationId: input.organizationId, clientId: input.clientId, host, ...diagnostics }));
   await prisma.knowledgeDocument
     .update({ where: { id: docId }, data: { status: "failed", meta: { error: mapped.message, ...diagnostics } } })
@@ -183,20 +212,53 @@ async function processSource(docId: string, input: IngestInput, isUrl: boolean):
   let title = input.title;
 
   if (isUrl) {
-    if (!input.url) throw new KnowledgeIngestError("BLOCKED_URL", "URL ausente.");
-    const page = await safeFetchUrl(input.url); // valida SSRF + revalida redirects
+    if (!input.url) throw new KnowledgeIngestError("EMPTY_URL", "Informe uma URL.");
+    const started = Date.now();
+    // Normaliza a sintaxe (fonte única) para diagnóstico consistente. Erros de
+    // sintaxe aqui já foram barrados pela rota; se chegarem, propagam para o
+    // mapeador (INVALID_URL/UNSUPPORTED_PROTOCOL), nunca "falha genérica".
+    const nu = normalizePublicUrl(input.url);
+    const baseDiag: IngestDiagnostics = {
+      normalizedUrl: safeUrlForLog(nu.url), // sem query/fragment → não vaza tokens/UTM
+      hostname: nu.url.hostname,
+      protocol: nu.url.protocol.replace(":", ""),
+    };
+
+    // Fase de REDE: fetch + SSRF + redirects. Falhas carregam o diagnóstico.
+    let page;
+    try {
+      page = await safeFetchUrl(input.url); // valida SSRF + revalida cada redirect
+    } catch (e) {
+      const mapped = mapKnowledgeError(e);
+      throw new KnowledgeIngestError(mapped.errorCode, mapped.message, {
+        ...baseDiag,
+        phase: "fetch",
+        httpStatus: mapped.httpStatus,
+        processingMs: Date.now() - started,
+      });
+    }
+
     const extracted = extractContent(page.body);
     let domain: string | undefined;
-    try { domain = new URL(page.finalUrl).hostname.replace(/^www\./, ""); } catch { /* ignore */ }
+    let safeFinalUrl = page.finalUrl;
+    try {
+      const fu = new URL(page.finalUrl);
+      domain = fu.hostname.replace(/^www\./, "");
+      safeFinalUrl = safeUrlForLog(fu); // host+path para log/meta (sem query)
+    } catch { /* ignore */ }
 
     const diag: IngestDiagnostics = {
+      ...baseDiag,
+      phase: "extract",
       httpStatus: page.status,
       contentType: page.contentType.split(";")[0] || undefined,
       htmlLength: extracted.htmlLength,
       extractedTextLength: extracted.textLength,
       extractionMethod: extracted.method,
-      finalUrl: page.finalUrl,
+      finalUrl: safeFinalUrl,
       domain,
+      redirectCount: page.redirects,
+      processingMs: Date.now() - started,
       likelyJavascriptRendered: extracted.likelyJavascriptRendered,
     };
 
@@ -220,9 +282,11 @@ async function processSource(docId: string, input: IngestInput, isUrl: boolean):
       throw new KnowledgeIngestError("INSUFFICIENT_CONTENT", "Página acessada, mas encontramos pouco conteúdo textual para indexar.", diag);
     }
 
-    console.log("knowledge.ingest.ok", JSON.stringify({ sourceId: docId, organizationId: input.organizationId, clientId: input.clientId, host: domain, httpStatus: diag.httpStatus, contentType: diag.contentType, htmlLength: diag.htmlLength, extractionMethod: diag.extractionMethod, extractedTextLength: diag.extractedTextLength }));
+    console.log("knowledge.ingest.ok", JSON.stringify({ sourceId: docId, organizationId: input.organizationId, clientId: input.clientId, host: domain, httpStatus: diag.httpStatus, contentType: diag.contentType, htmlLength: diag.htmlLength, extractionMethod: diag.extractionMethod, extractedTextLength: diag.extractedTextLength, redirectCount: diag.redirectCount, processingMs: diag.processingMs }));
 
     patch.domain = domain ?? null;
+    // canonicalUrl é METADADO — nunca é usado como fetchUrl (o fetch usa a URL
+    // normalizada e segue redirects). fetchUrl/finalUrl ≠ canonicalUrl.
     patch.canonicalUrl = extracted.canonicalUrl ?? page.finalUrl;
     patch.author = extracted.author ?? null;
     patch.publishedAt = extracted.publishedAt ?? null;
@@ -234,6 +298,7 @@ async function processSource(docId: string, input: IngestInput, isUrl: boolean):
     meta.htmlLength = diag.htmlLength;
     meta.extractionMethod = diag.extractionMethod;
     meta.finalUrl = diag.finalUrl;
+    meta.redirectCount = diag.redirectCount;
   }
 
   const content = normalizeText(rawContent).slice(0, MAX_CONTENT_CHARS);

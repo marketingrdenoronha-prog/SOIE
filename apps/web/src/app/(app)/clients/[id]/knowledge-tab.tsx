@@ -273,16 +273,19 @@ function SourceCard({ clientId, source, onChanged }: { clientId: string; source:
   const chunks = source.meta?.chunks as number | undefined;
   const errMsg = source.meta?.error as string | undefined;
   const errCode = source.meta?.errorCode as string | undefined;
-  const errHint =
-    errCode === "JS_RENDER_REQUIRED"
-      ? "Dica: este site monta o conteúdo por JavaScript. Copie o texto da página e adicione como nota."
-      : errCode === "HTTP_403"
-        ? "Dica: o site bloqueia leitura automática. Copie o texto e adicione como nota, ou tente outra URL do mesmo conteúdo."
-        : errCode === "HTTP_404" || errCode === "DNS_ERROR"
-          ? "Dica: confira se o endereço está correto e acessível."
-          : errCode === "INSUFFICIENT_CONTENT"
-            ? "Dica: aponte para a página específica do conteúdo (artigo/serviço) ou cole o texto como nota."
-            : undefined;
+  const HINTS: Record<string, string> = {
+    JS_RENDER_REQUIRED: "Dica: este site monta o conteúdo por JavaScript. Copie o texto da página e adicione como nota.",
+    HTTP_403: "Dica: o site bloqueia leitura automática. Copie o texto e adicione como nota, ou tente outra URL do mesmo conteúdo.",
+    HTTP_404: "Dica: confira se o endereço está correto e acessível.",
+    DNS_ERROR: "Dica: confira se o domínio está escrito corretamente e no ar.",
+    TIMEOUT: "Dica: o site demorou a responder. Tente novamente em Atualizar.",
+    NETWORK_ERROR: "Dica: não foi possível conectar. Verifique a URL e tente Atualizar.",
+    REDIRECT_BLOCKED: "Dica: o link redireciona para um destino inacessível. Use a URL final diretamente.",
+    UNSUPPORTED_CONTENT_TYPE: "Dica: o link não é uma página de texto (ex.: PDF/arquivo). Envie pelo modo Arquivo.",
+    INSUFFICIENT_CONTENT: "Dica: aponte para a página específica do conteúdo (artigo/serviço) ou cole o texto como nota.",
+    EMPTY_RESPONSE: "Dica: a página veio vazia. Verifique a URL ou cole o texto como nota.",
+  };
+  const errHint = errCode ? HINTS[errCode] : undefined;
 
   async function reprocess() {
     setBusy("reprocess"); setErr(null);
